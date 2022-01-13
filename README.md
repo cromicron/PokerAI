@@ -1,1 +1,4 @@
-# PokerAI
+<h1>Creating and Training an AI to Play No Limit Holdem Heads-Up Poker through Deep Reinforcement Self-Play Learning with Tensorflow/Keras </h1>
+This project came about as a challenge to a (semi-)professional poker player and dear friend of mine, that I would program an AI, that would beat him in poker. I am a Data-Scientist in the making and one purpose of this project is to push my limits in python and machine-learning. <br>
+I am building the poker game from scratch as an environment an agent can later use to train in. I am also building a user-interface for my friend (and myself) to play against the AI. The actual model will be a neural network generated with tensorflow-keras. It is going to learn through deep-reinforcement learning by playing against itself. I start with a deterministic approach (deep-q learning). Taking into account that the environment in poker is probabilistic, I will later on try to implement a stochastic approach. State-of-the-art poker theory suggests that probabilistic strategies are superior to deterministic strategies. I plan to also host a video of my friend playing against the AI.
+
