@@ -6,7 +6,7 @@ from tensorflow.keras.models import load_model
 from keras import backend as K
 
 #create lookup dictonary for preflop hands
-modelsFolder = 'trainedModels/strengthEvaluator'
+modelsFolder = 'trainedModels/strengthEvaluator/'
 dfPreflop = pd.read_csv('strengthPreflop.csv', index_col = False)
 lookupPreflop = {}
 for i in dfPreflop.index:
