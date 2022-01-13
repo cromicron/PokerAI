@@ -158,9 +158,10 @@ cython_debug/
 
 # End of https://www.toptal.com/developers/gitignore/api/python
 
-./PokerAI100BB/simHandsRiverVil.csv
-./PokerAI100BB/simHandsRiverMore.csv
-./simulatedHands/.ipynb_checkpoints/simHandsRiverMore-checkpoint.csv
-./simulatedHands/.ipynb_checkpoints/simHandsRiverVil-checkpoint.csv
-./PokerAIShort/simulatedHands/simHandsRiverVil.csv
-./PokerAIShort/simulatedHands/simHandsRiverMore.csv
+PokerAI100BB/simHandsRiverVil.csv
+PokerAI100BB/simHandsRiverMore.csv
+simulatedHands/.ipynb_checkpoints/simHandsRiverMore-checkpoint.csv
+simulatedHands/.ipynb_checkpoints/simHandsRiverVil-checkpoint.csv
+PokerAIShort/simulatedHands/simHandsRiverVil.csv
+PokerAIShort/simulatedHands/simHandsRiverMore.csv
+
