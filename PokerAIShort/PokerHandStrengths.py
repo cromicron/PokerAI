@@ -1,12 +1,3 @@
-#should be replaced with a time efficient lookuptable
-from itertools import combinations as combs
-
-values = list(range(2,15))
-suits = [0, 1, 2, 3]
-deck = []
-for value in values:
-    for suit in suits:
-        deck.append((value, suit))
 def check_straightflush(hand):
     hand = hand[:]
     hand.sort(reverse = True)
@@ -50,7 +41,7 @@ def check_straightflush(hand):
 
         if not straightflush:
 
-            return False
+            return False, 0
 
 
 def check_quads(hand):
@@ -72,7 +63,7 @@ def check_quads(hand):
                     kicker = card
             return True, [quad, kicker]
 
-    return False
+    return False, 0
 
 
 def check_fullhouse(hand):
@@ -94,7 +85,7 @@ def check_fullhouse(hand):
                     pair = hand
             if pair >1:
                 return True, [trips, pair]
-    return False
+    return False, 0
 
 def check_flush(hand):
     #count suits
@@ -122,7 +113,7 @@ def check_flush(hand):
     elif len(diamonds)>= 5:
         suit = diamonds
     else:
-        return False
+        return False, 0
 
     suit.sort(reverse=True)
     return True, suit[0:5]
@@ -166,7 +157,7 @@ def check_straight(hand):
                 return True, 5
 
         if not straight:
-            return False
+            return False, 0
 
 def check_trips(hand):
     handfreq = {}
@@ -185,7 +176,7 @@ def check_trips(hand):
             kickers.sort(reverse=True)
             cards.extend(kickers[0:2])
             return True, cards
-    return False
+    return False, 0
 
 def check_twopair(hand):
     handfreq = {}
@@ -211,7 +202,7 @@ def check_twopair(hand):
             return True, [pairs[0], pairs[1], pairs[2]]
         return True, [pairs[0], pairs[1], highcard]
     else:
-        return False
+        return False, 0
 
 def check_pair(hand): #if True return list with pair-card and four strongest non-pair values
     hand = hand[:]
@@ -227,54 +218,53 @@ def check_pair(hand): #if True return list with pair-card and four strongest non
                 for k in range(3):
                     cards.append(hand[k][0])                                   
                 return (True, cards)
-    return False
+    return False, 0
 
 
-def strength(hand): #Using the check hand functions above. Starting with the strongest hand. If hand is True, the function above returns True and the meaningful information about the hand. If not, it creates a
-    #TypeError, because only False is retured, so nothing can be written into the output variable. We use this to profit from the try, except statements. This might look weired, but by that we only have to
-    #run the functions one to test for the hand and create the output.
+#chagnge this
+def strength(hand): #One after the other we are going to check for hand strength. The return satatement will end the function and give back the hand strength type
+    #and subcategory of strength, if the function that checks for the particular hand type returned true. 
 
-    try:
-        a, output = check_straightflush(hand)
-        return 8, output
+    isType, substrength = check_straightflush(hand)
+    if isType:
+        return 8, substrength
+    
+    isType, substrength = check_quads(hand)
+    if isType:
+        return 7, substrength
 
-    except TypeError:
-        try:
-            a, output = check_quads(hand)
-            return 7, output
-        except TypeError:
-            try:
-                a, output = check_fullhouse(hand)
-                return 6, output
-            except TypeError:
-                try:
-                    a, output = check_flush(hand)        
-                    return 5, output
-                except TypeError:
-                    try:
-                        a, output = check_straight(hand)
-                        return 4, output
-                    except TypeError:
-                        try:
-                            a, output = check_trips(hand)
-                            return 3, output
-                        except TypeError:
-                            try:
-                                a, output = check_twopair(hand)
-                                return 2, output
-                            except TypeError:
-                                try:
-                                    a, output = check_pair(hand)
-                                    return  1, output
-                                except TypeError:
-                                    #if hand is not pair, it's highcard. We return strength of 0 and a sorted list of cardvalues
-                                    highcards = []
-                                    hand = hand[:]
-                                    hand.sort(reverse = True)
-                                    for i in range(5):
-                                        highcards.append(hand[i][0])
-                                    return 0, highcards
+    isType, substrength = check_fullhouse(hand)
+    if isType:
+        return 6, substrength
 
+    isType, substrength = check_flush(hand)
+    if isType:
+        return 5, substrength
+
+    isType, substrength = check_straight(hand)
+    if isType:
+        return 4, substrength
+    
+
+    isType, substrength = check_trips(hand)
+    if isType:
+        return 3, substrength
+
+    isType, substrength = check_twopair(hand)    
+    if isType:
+        return 2, substrength
+    
+    isType, substrength = check_pair(hand)
+    if isType:
+        return  1, substrength
+                                
+    #if hand is not pair, it's highcard. We return strength of 0 and a sorted list of cardvalues
+    highcards = []
+    hand = hand[:]
+    hand.sort(reverse = True)
+    for i in range(5):
+        highcards.append(hand[i][0])
+    return 0, highcards
 
 def compare(hands): #takes in a dictonary of hands with position as keys (sb = 0) and returns dictonary of positions with rank (0 is strongest)
     rankings = hands.copy()
