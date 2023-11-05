@@ -1,6 +1,6 @@
 import random
 import collections
-from HandComperator import compare_hands
+from PokerGame.HandComperator import compare_hands
 import copy
 import numpy as np
 
@@ -104,7 +104,7 @@ class Game:
     def compare(self,players):
         #takes in players and returns relative hand strengths as list
         hands = [self.board + [cards for cards in player.holecards] for player in players]
-        strengths =  compare_hands(hands)
+        strengths = compare_hands(hands)
         return strengths
 
     def showdown(self, n_run = 1):
