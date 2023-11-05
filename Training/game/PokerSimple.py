@@ -1,12 +1,14 @@
 import random
+import copy
 class PokerSimple:
-    def __init__(self,agent_0, agent_1, multiple_run = True): #If allin happened preflop, then we can let all runs happen (3 cards left)
+    def __init__(self,agent_0, agent_1, multiple_run = True, run_ranges = False, ranges = {0:None, 1:None}): #If allin happened preflop, then we can let all runs happen (3 cards left)
         self.agent_0 = agent_0
         self.agent_1 = agent_1
         self.deck = list(range(1,6))
         self.deck.extend(list(range(1,6)))
         self.multiple_run = multiple_run
-    
+        self.run_ranges = run_ranges
+        self.ranges = ranges
     def reset(self):
         self.done = False
         self.position_0 = random.randint(0,1)
@@ -56,8 +58,8 @@ class PokerSimple:
             run = 1
         self.hand_history=[]
         for i in range(run):
-            board = self.deck[2+i]            
-            
+            board = self.deck[2+i]
+
             if self.hole_0 == board:
                 strength_0 = 10
             else:
@@ -74,7 +76,7 @@ class PokerSimple:
                 win_1 += 1
             else:
                 split += 1
-            
+
             hand = [self.hole_0, self.hole_1, board]
             self.hand_history.append(hand)
         
@@ -154,7 +156,45 @@ class PokerSimple:
                     bet = 0
                 
             if self.next_to_act == []:
-                win_0, win_1, split = self.showdown()
+                if not self.run_ranges:
+                    win_0, win_1, split = self.showdown()
+                else:
+                    #showdown against entire range
+
+                    for player in self.ranges:
+                        if self.ranges[player] != None:
+                            range_player = player
+
+                    n_run = 20
+                    win_0, win_1, split = 0, 0, 0
+                    for i in range(n_run):
+                        if range_player == 0:
+                            hand_villain = self.hole_0 #just for memories
+                            #sake. We are not using the actual hand of villain,
+                            #because it is unknown.
+                        else:
+                            hand_villain = self.hole_1
+
+                        game = copy.deepcopy(self)
+
+                        #draw new hand_villain from range
+                        new_hand_vil = random.choices([1,2,3,4,5], self.ranges[player])[0]
+                        #exchange cards for villain
+                        if new_hand_vil != hand_villain:
+                            index_new_hand_vil = game.deck[2:].index(new_hand_vil)+2
+                            if range_player == 0:
+                                game.hole_0 = new_hand_vil
+                                game.deck[index_new_hand_vil], game.deck[1] = hand_villain, new_hand_vil
+                            else:
+                                game.hole_1 = new_hand_vil
+                                game.deck[index_new_hand_vil], game.deck[0] = hand_villain, new_hand_vil
+                        w_0, w_1, s = game.showdown()
+                        win_0 += w_0
+                        win_1 += w_1
+                        split += s
+                    win_0 /= n_run
+                    win_1 /= n_run
+                    split /= n_run
                 proportion_pot_0 = win_0/(win_0+win_1+split)+0.5*(split/(win_0+win_1+split))
                 proportion_pot_1 = 1 - proportion_pot_0
                 self.stacks[0] += proportion_pot_0 * self.pot

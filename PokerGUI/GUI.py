@@ -18,7 +18,7 @@ else:
 agent = Agent(lr, gamma, n_actions, epsilon, batch_size, input_dims, stacksize, fname = fname, handEval=True)
 agent.load_model()
 
-from gameplay import HUPoker
+from gameplay import Game
 import random
 from tkinter import *
 from PIL import ImageTk, Image

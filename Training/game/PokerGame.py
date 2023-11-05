@@ -1,7 +1,7 @@
 import numpy as np
 import random
 from game.PokerHandStrengths import compare
-from StrengthEvaluator2 import StrengthEvaluator
+
 
 values = list(range(2,15))
 suits = [0, 1, 2, 3]
@@ -27,10 +27,10 @@ def deal_turn(deck,n_players):
 def deal_river(deck,n_players):
     return deck[n_players*2+7]
 
-sEval = StrengthEvaluator()
+
 
 class HUPoker:   
-    def __init__(self, stack_hero, stack_villain, agentHero, agentVillain,random_stack = False, minstack = 5, maxstack = 200, n_run =20, fixed_bet_sizes =True):
+    def __init__(self, stack_hero, stack_villain, agentHero, agentVillain,random_stack = False, minstack = 5, maxstack = 200, n_run =20, fixed_bet_sizes =True, include_eval = False):
 		#fixed_bet_sizes sets if every bet or raise size is possible or if only some fixed sizes are possible. 
         self.starting_hero = stack_hero
         self.starting_villain = stack_villain
@@ -39,7 +39,10 @@ class HUPoker:
         self.villain = agentVillain
         self.random_stack = random_stack
         self.minstack, self.maxstack  = minstack, maxstack
-
+        self.should_eval = include_eval
+        if self.should_eval:
+            from StrengthEvaluator2 import StrengthEvaluator
+            sEval = StrengthEvaluator()
 
     def reset(self): #shuffles the deck, seats the two players and returns position, stack sizes, hand (only suited or unsuited, because actual stuits are not important preflop) 
         if self.random_stack:
@@ -67,18 +70,19 @@ class HUPoker:
         self.holecards = deal_preflop(deck,2)[self.position]
         self.holecards_villain = deal_preflop(deck, 2)[0] if self.position == 1 else deal_preflop(deck, 2)[1]
         #evaluate hand strengths
-        sEval.evaluate(list(self.holecards))
-        self.pwinHero = sEval.pwin
-        self.plooseHero = sEval.ploose
-        self.pwinAvg = sEval.pwinAvg
-        self.plooseAvg = sEval.plooseAvg
-        self.stdWinAvg = sEval.stdWinAvg
-        sEval.evaluate(list(self.holecards_villain))
-        self.pwinVillain = sEval.pwin
-        self.plooseVillain = sEval.ploose
-        self.pwinAvgVillain = sEval.pwinAvg
-        self.plooseAvgVillain = sEval.plooseAvg
-        self.stdWinAvgVillain = sEval.stdWinAvg
+        if self.should_eval:
+            sEval.evaluate(list(self.holecards))
+            self.pwinHero = sEval.pwin
+            self.plooseHero = sEval.ploose
+            self.pwinAvg = sEval.pwinAvg
+            self.plooseAvg = sEval.plooseAvg
+            self.stdWinAvg = sEval.stdWinAvg
+            sEval.evaluate(list(self.holecards_villain))
+            self.pwinVillain = sEval.pwin
+            self.plooseVillain = sEval.ploose
+            self.pwinAvgVillain = sEval.pwinAvg
+            self.plooseAvgVillain = sEval.plooseAvg
+            self.stdWinAvgVillain = sEval.stdWinAvg
         
         self.value_low = self.holecards[0][0]
         self.value_high = self.holecards[1][0]
@@ -123,38 +127,36 @@ class HUPoker:
 
             observation_villain = self.create_observation_villain()
             self.action_villain = self.villain.choose_action(observation_villain)
-			if fixed_bet_sizes:
-				if self.action_villain == 0:
-					self.stack_bb += 1.5
-					bet = 0
-					done = True
 
-				elif self.action_villain == 1:
-					bet = 0.5
+            if self.action_villain == 0:
+                self.stack_bb += 1.5
+                bet = 0
+                done = True
 
-				elif self.action_villain >= 2 and self.action_villain <6:#minraise - at least complete plus the last raised bit
-					bet = 1.5
+            elif self.action_villain == 1:
+                bet = 0.5
 
-				elif self.action_villain == 6 or self.action_villain == 7: #2.5 total bet villain
-					bet = 2.5*self.bet_bb - self.bet_sb
+            elif self.action_villain >= 2 and self.action_villain <6:#minraise - at least complete plus the last raised bit
+                bet = 1.5
 
-				elif self.action_villain == 8 or self.action_villain == 9: #3 total bet villain
-					bet = 3*self.bet_bb - self.bet_sb
+            elif self.action_villain == 6 or self.action_villain == 7: #2.5 total bet villain
+                bet = 2.5*self.bet_bb - self.bet_sb
 
-				elif self.action_villain == 10: #4 total bet villain
-					bet = 4*self.bet_bb - self.bet_sb
+            elif self.action_villain == 8 or self.action_villain == 9: #3 total bet villain
+                bet = 3*self.bet_bb - self.bet_sb
 
-				else: #allin
-					bet = self.stack_sb
-			else:
-				pass 
-				#implement continuous actions 
-			self.bet_sb += bet
-			self.stack_sb -= bet
-			self.pot += bet
-			self.left_bet_round = [1]
-			self.hh[0][0] = bet
-			self.count_round = 0
+            elif self.action_villain == 10: #4 total bet villain
+                bet = 4*self.bet_bb - self.bet_sb
+
+            else: #allin
+                bet = self.stack_sb
+
+            self.bet_sb += bet
+            self.stack_sb -= bet
+            self.pot += bet
+            self.left_bet_round = [1]
+            self.hh[0][0] = bet
+            self.count_round = 0
         
 
         self.create_observation()
@@ -404,18 +406,19 @@ class HUPoker:
 
                     self.left_bet_round = [0,1]
                     #evaluate hand strengths
-                    sEval.evaluate(list(self.holecards)+ self.board_current)
-                    self.pwinHero = sEval.pwin
-                    self.plooseHero = sEval.ploose
-                    self.pwinAvg = sEval.pwinAvg
-                    self.plooseAvg = sEval.plooseAvg
-                    self.stdWinAvg = sEval.stdWinAvg
-                    sEval.evaluate(list(self.holecards_villain)+self.board_current)
-                    self.pwinVillain = sEval.pwin
-                    self.plooseVillain = sEval.ploose
-                    self.pwinAvgVillain = sEval.pwinAvg
-                    self.plooseAvgVillain = sEval.plooseAvg
-                    self.stdWinAvgVillain = sEval.stdWinAvg
+                    if self.should_eval:
+                        sEval.evaluate(list(self.holecards)+ self.board_current)
+                        self.pwinHero = sEval.pwin
+                        self.plooseHero = sEval.ploose
+                        self.pwinAvg = sEval.pwinAvg
+                        self.plooseAvg = sEval.plooseAvg
+                        self.stdWinAvg = sEval.stdWinAvg
+                        sEval.evaluate(list(self.holecards_villain)+self.board_current)
+                        self.pwinVillain = sEval.pwin
+                        self.plooseVillain = sEval.ploose
+                        self.pwinAvgVillain = sEval.pwinAvg
+                        self.plooseAvgVillain = sEval.plooseAvg
+                        self.stdWinAvgVillain = sEval.stdWinAvg
                     self.create_observation()
                     return done
 
@@ -434,18 +437,19 @@ class HUPoker:
 
                     self.left_bet_round = [0,1]
                     #evaluate hand strengths
-                    sEval.evaluate(list(self.holecards)+ self.board_current)
-                    self.pwinHero = sEval.pwin
-                    self.plooseHero = sEval.ploose
-                    self.pwinAvg = sEval.pwinAvg
-                    self.plooseAvg = sEval.plooseAvg
-                    self.stdWinAvg = sEval.stdWinAvg
-                    sEval.evaluate(list(self.holecards_villain)+self.board_current)
-                    self.pwinVillain = sEval.pwin
-                    self.plooseVillain = sEval.ploose
-                    self.pwinAvgVillain = sEval.pwinAvg
-                    self.plooseAvgVillain = sEval.plooseAvg
-                    self.stdWinAvgVillain = sEval.stdWinAvg
+                    if self.should_eval:
+                        sEval.evaluate(list(self.holecards)+ self.board_current)
+                        self.pwinHero = sEval.pwin
+                        self.plooseHero = sEval.ploose
+                        self.pwinAvg = sEval.pwinAvg
+                        self.plooseAvg = sEval.plooseAvg
+                        self.stdWinAvg = sEval.stdWinAvg
+                        sEval.evaluate(list(self.holecards_villain)+self.board_current)
+                        self.pwinVillain = sEval.pwin
+                        self.plooseVillain = sEval.ploose
+                        self.pwinAvgVillain = sEval.pwinAvg
+                        self.plooseAvgVillain = sEval.plooseAvg
+                        self.stdWinAvgVillain = sEval.stdWinAvg
                     self.create_observation()
                     return done
 
@@ -460,18 +464,19 @@ class HUPoker:
 
                     self.left_bet_round = [0,1]
                     #evaluate hand strengths
-                    sEval.evaluate(list(self.holecards)+ self.board_current)
-                    self.pwinHero = sEval.pwin
-                    self.plooseHero = sEval.ploose
-                    self.pwinAvg = sEval.pwinAvg
-                    self.plooseAvg = sEval.plooseAvg
-                    self.stdWinAvg = sEval.stdWinAvg
-                    sEval.evaluate(list(self.holecards_villain)+self.board_current)
-                    self.pwinVillain = sEval.pwin
-                    self.plooseVillain = sEval.ploose
-                    self.pwinAvgVillain = sEval.pwinAvg
-                    self.plooseAvgVillain = sEval.plooseAvg
-                    self.stdWinAvgVillain = sEval.stdWinAvg
+                    if self.should_eval:
+                        sEval.evaluate(list(self.holecards)+ self.board_current)
+                        self.pwinHero = sEval.pwin
+                        self.plooseHero = sEval.ploose
+                        self.pwinAvg = sEval.pwinAvg
+                        self.plooseAvg = sEval.plooseAvg
+                        self.stdWinAvg = sEval.stdWinAvg
+                        sEval.evaluate(list(self.holecards_villain)+self.board_current)
+                        self.pwinVillain = sEval.pwin
+                        self.plooseVillain = sEval.ploose
+                        self.pwinAvgVillain = sEval.pwinAvg
+                        self.plooseAvgVillain = sEval.plooseAvg
+                        self.stdWinAvgVillain = sEval.stdWinAvg
                     self.create_observation()
                     return done
 

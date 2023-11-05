@@ -4,6 +4,7 @@ from HandComperator import compare_hands
 import copy
 import numpy as np
 
+
 value_dict = {10: 'T', 11: 'J', 12: 'Q', 13:'K', 14: 'A'}
 suit_dict = {0:'c', 1:'d', 2:'h', 3:'s'}
 class Card:
@@ -71,7 +72,7 @@ class Game:
         if hand_history:
             self.hand_history = Hand_History()
 
-    def new_hand(self, random_seat=False, first_hand = False):
+    def new_hand(self, random_seat=False, first_hand = False, reset_to_starting = True):
         self.left_in_hand = copy.copy(self.positions)
         self.deck.shuffle()
         if random_seat:
@@ -82,6 +83,9 @@ class Game:
 
         for i in range(len(self.positions)):
             self.positions[i].holecards=self.deck[2*i:2*i+2]
+        if reset_to_starting:
+            for player in self.players:
+                player.stack = player.starting_stack
         self.positions[0].stack -= 0.5
         self.positions[0].bet += 0.5
         self.positions[1].stack -= 1
@@ -96,6 +100,7 @@ class Game:
         self.finished = False
         self.max_bet =1
         self.added = 1 #current amount added to previous max_bet. Necessary to know minbet
+        self.board= []
     def compare(self,players):
         #takes in players and returns relative hand strengths as list
         hands = [self.board + [cards for cards in player.holecards] for player in players]
@@ -206,17 +211,26 @@ class Game:
         if self.finished:
             return None
         next_player = self.next[-1]
-        if next_player.bet == self.pot/self.n_players:
-            if next_player.stack != 0:
-                return 1,2
-            else:
-                return 1
+        if next_player.bet == self.max_bet:
+           return 1,2
 
         else:
             if next_player.stack > self.max_bet - next_player.stack:
                 return 0,1,2
             else:
                 return 0,1
+
+    def get_legal_betsize(self):
+        legal_actions = self.get_legal_actions()
+        if 2 not in legal_actions:
+            return None
+
+        minbet = min(self.next[-1].stack, self.max_bet + self.added)
+        if minbet == 0:
+            minbet = min(1,self.next[-1].stack)
+        return minbet
+
+
 
     def implement_action(self, player, action, amount=None):
         if player != self.next[-1]:
@@ -265,7 +279,8 @@ class Game:
                 return
             #check for legal raise size. Size must be matching the current raise/bet and adding equal ammount
             #if raised, but only if player has enough.
-            if (amount < player.bet+player.stack) and (amount < self.max_bet + self.added or amount < 1):
+            if (amount < player.bet+player.stack) and (amount < self.max_bet + self.added or amount < 1) \
+                    and (amount < player.stack):
                  raise SizeError("illegal betsize!")
                  return
             #add all players, who aren't in next anymore back into next

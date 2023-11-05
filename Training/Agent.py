@@ -44,7 +44,7 @@ class ReplayBuffer():
         return states, actions, rewards, states_, terminal
 
 
-
+tf.keras.layers.InputLayer(input_shape=(4,))
 def build_dqn(lr, n_actions, input_dims, stacksize, layerSizes):
     model = keras.Sequential()
     model.add(tf.keras.layers.Masking(mask_value=-1., input_shape=input_dims))
