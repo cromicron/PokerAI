@@ -225,6 +225,7 @@ class TestPoker(unittest.TestCase):
         self.assertEqual(game.positions[1].stack,100.5)
         self.assertEqual(game.positions[0].stack,99.5)
 
+
     def test_call_check_trough_HU(self):
         #all players call and bb checks behind
         game = Game(2)

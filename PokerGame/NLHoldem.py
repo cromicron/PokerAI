@@ -74,27 +74,29 @@ class Game:
 
     def new_hand(self, random_seat=False, first_hand = False, reset_to_starting = True):
         self.left_in_hand = copy.copy(self.positions)
-        self.deck.shuffle()
+
         if random_seat:
             random.shuffle(self.positions)
         else:
             if not first_hand:
                 self.positions.rotate(-1)
 
-        for i in range(len(self.positions)):
-            self.positions[i].holecards=self.deck[2*i:2*i+2]
         if reset_to_starting:
             for player in self.players:
                 player.stack = player.starting_stack
+                player.bet = 0
         self.positions[0].stack -= 0.5
         self.positions[0].bet += 0.5
         self.positions[1].stack -= 1
         self.positions[1].bet += 1
         self.pot = 1.5
+        self.deck.shuffle()
+        for i in range(len(self.positions)):
+            self.positions[i].holecards=self.deck[2*i:2*i+2]
         self.next = collections.deque(self.positions) #the next player to act is on top of the que
         self.next.reverse()
-        if self.n_players >2:
-            self.next.rotate(2)
+
+        self.next.rotate(2)
         self.roundabout = copy.copy(self.next)
         self.street = 0
         self.finished = False
@@ -235,12 +237,12 @@ class Game:
     def implement_action(self, player, action, amount=None):
         if player != self.next[-1]:
             raise ValueError("It's not the chosen player's turn to act")
-            return
+
         legal_actions = self.get_legal_actions()
         if action not in legal_actions:
             errorMsg = str(action) + " is an illegal action. Please choose " + str(legal_actions)
             raise ValueError(errorMsg)
-            return
+
         if amount != None and amount > player.stack+player.bet:
             raise SizeError("player doesn't have enough chips to make that bets/raise")
         if action == 0:
@@ -276,13 +278,13 @@ class Game:
         else: #player bets or raises. Everytime he does, he must spcify a bet/raise size.
             if amount == None:
                 raise TypeError("Specify bet or raise size!")
-                return
+
             #check for legal raise size. Size must be matching the current raise/bet and adding equal ammount
             #if raised, but only if player has enough.
             if (amount < player.bet+player.stack) and (amount < self.max_bet + self.added or amount < 1) \
                     and (amount < player.stack):
                  raise SizeError("illegal betsize!")
-                 return
+
             #add all players, who aren't in next anymore back into next
             self.roundabout.rotate()
             for pl in reversed(self.roundabout):
@@ -352,9 +354,9 @@ class Game:
                         else:
                             self.board.append(self.deck[2*self.n_players +self.street+1])
                         self.next = collections.deque(self.left_in_hand)
-
                         if self.n_players != 2:
                             self.next.reverse()
+
                         #remove all players with 0 chips from next
                         to_remove = []
                         for player in self.next:
