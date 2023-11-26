@@ -1,8 +1,12 @@
+import os.path
 import random
 import collections
 from PokerGame.HandComperator import compare_hands
 import copy
 import numpy as np
+import json
+from datetime import datetime
+
 
 
 value_dict = {10: 'T', 11: 'J', 12: 'Q', 13:'K', 14: 'A'}
@@ -43,12 +47,8 @@ class Pot:
 class SizeError(Exception):
     pass
 
-class Hand_History:
-    def __init__(self):
-        pass
-
 class Game:
-    def __init__(self, n_players=2, stacks=[], hand_history = False):
+    def __init__(self, n_players=2, stacks=[], hand_history = False, save_hand_history = False):
         self.n_players = n_players
         self.deck = Deck()
         self.players = []
@@ -57,10 +57,10 @@ class Game:
             raise ArithmeticError("number of stacks must equal number of players")
 
         if stacks == []:
-            self.starting_stacks = [100 for player in range(n_players)]
+            self.starting_stacks = [200 for player in range(n_players)]
         else:
             self.starting_stacks = stacks
-        if min(self.starting_stacks) < 2:
+        if min(self.starting_stacks) < 4:
             raise ValueError("Starting Stack has to be at least 2")
 
         for i in range(n_players):
@@ -70,26 +70,26 @@ class Game:
         self.board = []
         self.pot = 0
         if hand_history:
-            self.hand_history = Hand_History()
+            self.hand_history = HandHistory(save = save_hand_history)
 
     def new_hand(self, random_seat=False, first_hand = False, reset_to_starting = True):
-        self.left_in_hand = copy.copy(self.positions)
-
+        if hasattr(self, "hand_history"):
+            self.hand_history.clear_hand_history()
         if random_seat:
             random.shuffle(self.positions)
         else:
             if not first_hand:
                 self.positions.rotate(-1)
-
+        self.left_in_hand = copy.copy(self.positions)
         if reset_to_starting:
             for player in self.players:
                 player.stack = player.starting_stack
                 player.bet = 0
-        self.positions[0].stack -= 0.5
-        self.positions[0].bet += 0.5
-        self.positions[1].stack -= 1
-        self.positions[1].bet += 1
-        self.pot = 1.5
+        self.positions[0].stack -= 1
+        self.positions[0].bet += 1
+        self.positions[1].stack -= 2
+        self.positions[1].bet += 2
+        self.pot = 3
         self.deck.shuffle()
         for i in range(len(self.positions)):
             self.positions[i].holecards=self.deck[2*i:2*i+2]
@@ -100,9 +100,24 @@ class Game:
         self.roundabout = copy.copy(self.next)
         self.street = 0
         self.finished = False
-        self.max_bet =1
-        self.added = 1 #current amount added to previous max_bet. Necessary to know minbet
+        self.max_bet = 2
+        self.added = 2 #current amount added to previous max_bet. Necessary to know minbet
         self.board= []
+
+        if hasattr(self, "hand_history"):
+            button_seat = 0 if self.n_players == 2 else self.n_players -1
+            self.hand_history.start_new_hand(0, (1, 2), button_seat)
+            for player in self.players:
+                seat = self.positions.index(player)
+                player_name = player.name
+                stack = player.starting_stack
+                self.hand_history.add_player(seat, player_name, stack)
+
+            small_blind = self.positions[0].name
+            big_blind = self.positions[1].name
+            self.hand_history.set_blinds(small_blind, 1, big_blind, 2)
+
+
     def compare(self,players):
         #takes in players and returns relative hand strengths as list
         hands = [self.board + [cards for cards in player.holecards] for player in players]
@@ -113,14 +128,26 @@ class Game:
         #compares hands of remaining players and distributes chips accordingly
         #check for side pot possibilities: When a player is all in and has less chips than any of the remaining
         #players starting stacks
+        if hasattr(self, "hand_history"):
+            for player in self.left_in_hand:
+                self.hand_history.record_action(4, player.name, "shows", amount=player.get_holecard_representation())
+
         result = np.array(self.compare(self.left_in_hand))
         if len(self.left_in_hand)<3 or 0 not in [player.stack for player in self.left_in_hand]: #two players can't have a side pot
             winners = np.flatnonzero(result == np.max(result))
             for winner in winners:
                 self.left_in_hand[winner].stack += self.pot/len(winners)
+            # After all betting rounds and showdown are complete:
+            if hasattr(self, "hand_history"):
+                stack_changes = {player.name: player.stack-player.starting_stack for player in self.players}
+                self.hand_history.set_summary(
+                    board_cards=[card.representation for card in self.board],
+                    main_pot={"Amount": self.pot/len(winners), "Winners": [self.left_in_hand[winner].name for winner in winners]},
+                    stack_changes = stack_changes
+                )
         #for side-pots
 
-        elif True:
+        else:
             #create pots
             all_ins = []
             pots = []
@@ -132,24 +159,24 @@ class Game:
             for player in self.players:
                 if player not in self.left_in_hand and player.starting_stack-player.stack >0:
                     bets_folded.append(player.starting_stack-player.stack)
-            print(len(self.left_in_hand), len(self.players))
+
             #add all players who have equal or more than all in player to new pot
             previous_smallest = 0
             strengths = dict(zip(self.left_in_hand,result))
-            print(bets_folded)
+
             while len(all_ins) > 0:
                 current_smallest = all_ins[0].starting_stack
                 pot = len(self.left_in_hand)*(current_smallest-previous_smallest)
-                print("1",len(self.left_in_hand),pot)
+
 
 
                 for i in range(len(bets_folded)):
                     to_add = min(bets_folded[i], current_smallest-previous_smallest)
-                    print("to add",to_add)
+
                     pot += to_add
                     bets_folded[i] -= to_add
                 previous_smallest = current_smallest
-                print("2",pot)
+
                 pots.append(Pot(copy.copy(self.left_in_hand),copy.copy(pot)))
 
                 stack = current_smallest
@@ -167,47 +194,10 @@ class Game:
                 for player in pot.players:
                     if strengths[player] == strengths[m]:
                         winners.append(player)
-                print(pot.pot_size,len(pot.players), len(strengths),winners)
+
                 for winner in winners:
                     winner.stack += pot.pot_size/len(winners)
 
-        else:
-            #create list of all players who are allin
-            strengths = dict(zip(self.left_in_hand,result))
-            all_ins = []
-            for player in self.left_in_hand:
-                if player.stack == 0:
-                    all_ins.append(player)
-            all_ins.sort(key = lambda x: x.starting_stack)
-            remove_from_pot = 0
-            players_fold = list(set(self.players)-set(self.left_in_hand))
-            players_fold_bet = []
-            for player in players_fold:
-                if player.bet != 0:
-                    players_fold_bet.append(player)
-            to_remove = 0
-            for i in range(len(all_ins)):
-                to_add = 0
-                for player in players_fold_bet:
-                    to_add += min([player.bet,all_ins[i].starting_stack-to_remove])
-                    player.bet -= to_add
-                to_remove +=all_ins[i].starting_stack
-                pot = (all_ins[i].starting_stack-remove_from_pot)*len(self.left_in_hand)+to_add
-                winners_pot = []
-                for player in self.left_in_hand:
-                    m = max(strengths,key = strengths.get)
-                    if strengths[player] == strengths[m]:
-                        winners_pot.append(player)
-                for winner_pot in winners_pot:
-                    winner_pot.stack += pot/len(winners_pot)
-                print(all_ins[i].stack, all_ins[i].starting_stack)
-                self.left_in_hand.remove(all_ins[i])
-                del strengths[all_ins[i]]
-                for k in range(i+1,len(all_ins)):
-                    if all_ins[k].starting_stack == all_ins[i].starting_stack:
-                        self.left_in_hand.remove(all_ins[k])
-                        del strengths[all_ins[k]]
-                remove_from_pot = all_ins[i].starting_stack
 
     def get_legal_actions(self):
         if self.finished:
@@ -218,19 +208,26 @@ class Game:
 
         else:
             if next_player.stack > self.max_bet - next_player.stack:
-                return 0,1,2
-            else:
-                return 0,1
+                # check if all others are allin:
+                n_with_chips = 0
+                for player in self.left_in_hand:
+                    if player.stack != 0:
+                        n_with_chips += 1
+                if n_with_chips > 1:
+                    return 0,1,2
+
+            return 0,1
 
     def get_legal_betsize(self):
         legal_actions = self.get_legal_actions()
         if 2 not in legal_actions:
             return None
-
-        minbet = min(self.next[-1].stack, self.max_bet + self.added)
-        if minbet == 0:
-            minbet = min(1,self.next[-1].stack)
-        return minbet
+        player = self.next[-1]
+        if self.max_bet == 0:
+            return min(2, player.stack)
+        else:
+            minbet = self.max_bet+self.added # must match and add at least the amount that the previous raiser added
+            return min(minbet, player.stack+player.bet)
 
 
 
@@ -246,12 +243,21 @@ class Game:
         if amount != None and amount > player.stack+player.bet:
             raise SizeError("player doesn't have enough chips to make that bets/raise")
         if action == 0:
+            if hasattr(self, "hand_history"):
+                self.hand_history.record_action(self.street, player.name, "Fold")
             self.next.pop()
             self.roundabout.pop()
             self.left_in_hand.remove(player)
             if len(self.left_in_hand)==1:
                 #if after a fold, only one player is left, the round is finished and that player who is left, receives
                 #the pot
+                if hasattr(self, "hand_history"):
+                    stack_changes = {player.name: player.stack - player.starting_stack for player in self.players}
+                    self.hand_history.set_summary(
+                        board_cards=[card.representation for card in self.board],
+                        main_pot={"Amount": self.pot, "Winners": [self.left_in_hand[0].name]},
+                        stack_changes=stack_changes
+                    )
                 self.left_in_hand[0].stack+=self.pot
                 self.next=[]
                 self.finished=True
@@ -264,14 +270,21 @@ class Game:
                 #check if player has enough chips to call the maxbet
                 to_call = self.max_bet - player.bet
                 if player.stack < to_call:
+                    if hasattr(self, "hand_history"):
+                        self.hand_history.record_action(self.street, player.name, "Call", player.stack)
                     self.pot += player.stack
                     player.bet += player.stack
                     player.stack = 0
                 else:
+                    if hasattr(self, "hand_history"):
+                        self.hand_history.record_action(self.street, player.name, "Call", to_call)
                     self.pot += to_call
                     player.bet += to_call
                     player.stack -= to_call
             #remove from roundabout if no chips left
+            else:
+                if hasattr(self, "hand_history"):
+                    self.hand_history.record_action(self.street, player.name, "Check")
             if player.stack == 0:
                 self.roundabout.remove(player)
 
@@ -281,10 +294,12 @@ class Game:
 
             #check for legal raise size. Size must be matching the current raise/bet and adding equal ammount
             #if raised, but only if player has enough.
-            if (amount < player.bet+player.stack) and (amount < self.max_bet + self.added or amount < 1) \
-                    and (amount < player.stack):
+            if amount < self.get_legal_betsize():
                  raise SizeError("illegal betsize!")
 
+            if hasattr(self, "hand_history"):
+                action_name = "Bet" if self.max_bet == 0 else "Raise"
+                self.hand_history.record_action(self.street, player.name, action_name, amount)
             #add all players, who aren't in next anymore back into next
             self.roundabout.rotate()
             for pl in reversed(self.roundabout):
@@ -295,6 +310,8 @@ class Game:
             player.stack -= amount - player.bet
             player.bet = copy.copy(amount)
             self.added = player.bet - self.max_bet
+            if self.added <0:
+                print("here")
             self.max_bet = copy.copy(player.bet)
             #remove from roundabout if no chips left
             if player.stack == 0:
@@ -338,11 +355,19 @@ class Game:
                         #no more possible actions, reveal board till river
                         if self.street == 0:
                             self.board.extend(self.deck[2*self.n_players:2*self.n_players +5])
+                            if hasattr(self, "hand_history"):
+                                self.hand_history.record_street_cards(
+                                    1,
+                                    [card.representation for card in self.board]
+                                )
                         elif self.street ==1:
                             self.board.extend(self.deck[2*self.n_players+3:2*self.n_players +5])
+                            if hasattr(self, "hand_history"):
+                                self.hand_history.record_street_cards(2, self.board[3].representation)
                         else:
                             self.board.extend(self.deck[2*self.n_players+4:2*self.n_players +5])
-
+                            if hasattr(self, "hand_history"):
+                                self.hand_history.record_street_cards(2, self.board[4].representation)
                         self.street = 3
                         self.showdown()
                         self.finished = True
@@ -351,8 +376,15 @@ class Game:
                         self.street += 1
                         if self.street == 1:
                             self.board.extend(self.deck[2*self.n_players:2*self.n_players +3])
+                            if hasattr(self, "hand_history"):
+                                self.hand_history.record_street_cards(
+                                    1,
+                                    [card.representation for card in self.board]
+                                )
                         else:
                             self.board.append(self.deck[2*self.n_players +self.street+1])
+                            if hasattr(self, "hand_history"):
+                                self.hand_history.record_street_cards(2, self.board[-1].representation)
                         self.next = collections.deque(self.left_in_hand)
                         if self.n_players != 2:
                             self.next.reverse()
@@ -371,85 +403,107 @@ class Game:
                         for pl in self.left_in_hand:
                             pl.bet = 0
 
-    def get_observation(self):
-        if len(self.players)!= 2:
-            raise ValueError("Observations are only implemented for Heads Up")
-            return
 
-        player = self.next[-1]
-        position = self.positions.index(player)
-        starting_stack_hero = player.starting_stack
-        current_stack_hero = player.stack
-        bet_street_hero = player.bet
-        bet_total_hero = player.starting_stack - player.stack
 
-        c_1_v = player.holecards[0].value
-        c_1_s = player.holecards[0].suit
-        c_2_v = player.holecards[1].value
-        c_2_s = player.holecards[1].suit
-        street = self.street
-        pot_size = self.pot
 
-        villain = self.positions[1-position]
-        starting_stack_vil = villain.starting_stack
-        current_stack_vil = villain.stack
-        bet_street_vil = villain.bet
-        bet_total_vil = starting_stack_vil - current_stack_vil
-        if len(self.board)== 0:
-            flop_1_v = -1
-            flop_1_s = -1
-            flop_2_v = -1
-            flop_2_s = -1
-            flop_3_v = -1
-            flop_3_s = -1
-            turn_v = -1
-            turn_s = -1
-            river_v = -1
-            river_s = -1
-        elif len(self.board)==3:
-            flop_1_v = self.board[0].value
-            flop_1_s = self.board[0].suit
-            flop_2_v = self.board[1].value
-            flop_2_s = self.board[1].suit
-            flop_3_v = self.board[2].value
-            flop_3_s = self.board[2].suit
-            turn_v = -1
-            turn_s = -1
-            river_v = -1
-            river_s = -1
-        elif len(self.board)==4:
-            flop_1_v = self.board[0].value
-            flop_1_s = self.board[0].suit
-            flop_2_v = self.board[1].value
-            flop_2_s = self.board[1].suit
-            flop_3_v = self.board[2].value
-            flop_3_s = self.board[2].suit
-            turn_v = self.board[3].value
-            turn_s = self.board[3].suit
-            river_v = -1
-            river_s = -1
+class HandHistory:
+    def __init__(self, save = False):
+        self.clear_hand_history()  # Initialize an empty hand history
+        self.save = save
+    def clear_hand_history(self):
+        self.hand_history = {
+            "HandNumber": None,
+            "Stakes": None,
+            "DateTime": None,
+            "ButtonSeat": None,
+            "Players": [],
+            "Blinds": {},
+            "Actions": {
+                "PreFlop": [],
+                "Flop": {"Cards": [], "Actions": []},
+                "Turn": {"Card": None, "Actions": []},
+                "River": {"Card": None, "Actions": []},
+                "ShowDown": []
+            },
+            "Summary": {
+                "Board": [],
+                "WinningHand": [],
+                "PotDistribution": [],
+                "StackChanges": []
+            }
+        }
+
+    def start_new_hand(self, hand_number, stakes, button_seat):
+        self.hand_history["HandNumber"] = hand_number
+        self.hand_history["DateTime"] = datetime.now().isoformat()
+        self.hand_history["Stakes"] = stakes
+        self.hand_history["ButtonSeat"] = button_seat
+
+    def add_player(self, seat_number, player_name, stack):
+        self.hand_history["Players"].append({"Seat": seat_number, "Player": player_name, "Stack": stack})
+
+    def set_blinds(self, small_blind_player, small_blind_amount, big_blind_player, big_blind_amount):
+        self.hand_history["Blinds"] = {
+            "Small": {"Player": small_blind_player, "Amount": small_blind_amount},
+            "Big": {"Player": big_blind_player, "Amount": big_blind_amount}
+        }
+
+    def record_action(self, street, player_name, action, amount=None):
+        if street == 0:
+            street_name = "PreFlop"
+        elif street == 1:
+            street_name = "Flop"
+        elif street == 2:
+            street_name = "Turn"
+        elif street == 3:
+            street_name = "River"
         else:
-            flop_1_v = self.board[0].value
-            flop_1_s = self.board[0].suit
-            flop_2_v = self.board[1].value
-            flop_2_s = self.board[1].suit
-            flop_3_v = self.board[2].value
-            flop_3_s = self.board[2].suit
-            turn_v = self.board[3].value
-            turn_s = self.board[3].suit
-            river_v = self.board[4].value
-            river_s = self.board[4].value
-        observation = copy.deepcopy([position, starting_stack_hero, current_stack_hero, bet_street_hero, bet_total_hero,
-         c_1_v, c_1_s, c_2_v, c_2_s, street, pot_size, starting_stack_vil, current_stack_vil,
-         bet_street_vil, bet_total_vil, flop_1_v,flop_1_s, flop_2_v,flop_2_s, flop_3_v,flop_3_s,
-         turn_v, turn_s, river_v, river_s])
-        return observation
+            street_name = "Showdown"
+        action_record = {"Player": player_name, "Action": action}
+        if amount is not None:
+            action_record["Amount"] = amount
 
+        # Add the action to the correct stage
+        if street_name == "PreFlop":
+            self.hand_history["Actions"]["PreFlop"].append(action_record)
+        elif street_name == "Flop":
+            self.hand_history["Actions"]["Flop"]["Actions"].append(action_record)
+        elif street_name == "Turn":
+            self.hand_history["Actions"]["Turn"]["Actions"].append(action_record)
+        elif street_name == "River":
+            self.hand_history["Actions"]["River"]["Actions"].append(action_record)
+        elif street_name == "ShowDown":
+            self.hand_history["Actions"]["ShowDown"].append(action_record)
 
+    def record_street_cards(self, street, cards):
+        if street == 1:
+            street_name = "Flop"
+        elif street == 2:
+            street_name = "Turn"
+        else:
+            street_name = "River"
+        if street_name == "Flop":
+            self.hand_history["Actions"][street_name]["Cards"] = cards
+        elif street_name in ["Turn", "River"]:
+            self.hand_history["Actions"][street_name]["Card"] = cards[0]  # Only one card for turn and river
 
+    def save_hand_history(self, base_directory, base_file_name):
+        # Check if the base directory exists, and if not, create it
+        if not os.path.exists(base_directory):
+            os.makedirs(base_directory)  # This will create all directories in the path that don't exist
 
+        # Get the current time and format it as specified
+        current_time = datetime.now().strftime("%Y%m%d%H%M%S")  # Fixed the format to be correct as yyyyMMddHHmmss
+        file_name = f"{base_file_name}_{current_time}.json"
+        full_path = os.path.join(base_directory, file_name)
 
+        with open(full_path, 'w') as file:
+            json.dump(self.hand_history, file, indent=4)
 
-
-
-
+    def set_summary(self, board_cards, main_pot, stack_changes: dict, side_pots=None):
+        self.hand_history["Summary"]["Board"] = board_cards
+        self.hand_history["Summary"]["MainPot"] = main_pot
+        self.hand_history["Summary"]["SidePots"] = side_pots if side_pots is not None else []
+        self.hand_history["Summary"]["StackChanges"] = stack_changes
+        if self.save:
+            self.save_hand_history("HandHistory", "epic_hand.json")

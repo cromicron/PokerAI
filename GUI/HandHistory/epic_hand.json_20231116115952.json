@@ -1,0 +1,98 @@
+{
+    "HandNumber": 0,
+    "Stakes": [
+        1,
+        2
+    ],
+    "DateTime": "2023-11-16T11:59:46.364446",
+    "ButtonSeat": 4,
+    "Players": [
+        {
+            "Seat": 4,
+            "Player": 0,
+            "Stack": 100
+        },
+        {
+            "Seat": 2,
+            "Player": 1,
+            "Stack": 100
+        },
+        {
+            "Seat": 0,
+            "Player": 2,
+            "Stack": 100
+        },
+        {
+            "Seat": 1,
+            "Player": 3,
+            "Stack": 100
+        },
+        {
+            "Seat": 3,
+            "Player": 4,
+            "Stack": 100
+        }
+    ],
+    "Blinds": {
+        "Small": {
+            "Player": 2,
+            "Amount": 1
+        },
+        "Big": {
+            "Player": 3,
+            "Amount": 2
+        }
+    },
+    "Actions": {
+        "PreFlop": [
+            {
+                "Player": 1,
+                "Action": "Fold"
+            },
+            {
+                "Player": 4,
+                "Action": "Fold"
+            },
+            {
+                "Player": 0,
+                "Action": "Fold"
+            },
+            {
+                "Player": 2,
+                "Action": "Fold"
+            }
+        ],
+        "Flop": {
+            "Cards": [],
+            "Actions": []
+        },
+        "Turn": {
+            "Card": null,
+            "Actions": []
+        },
+        "River": {
+            "Card": null,
+            "Actions": []
+        },
+        "ShowDown": []
+    },
+    "Summary": {
+        "Board": [],
+        "WinningHand": [],
+        "PotDistribution": [],
+        "StackChanges": {
+            "0": 0,
+            "1": 0,
+            "2": -1,
+            "3": -2,
+            "4": 0
+        },
+        "MainPot": {
+            "Amount": 3,
+            "Winners": [
+                3
+            ]
+        },
+        "SidePots": []
+    }
+}

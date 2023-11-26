@@ -1,0 +1,136 @@
+{
+    "HandNumber": 0,
+    "Stakes": [
+        1,
+        2
+    ],
+    "DateTime": "2023-11-16T11:58:35.684492",
+    "ButtonSeat": 4,
+    "Players": [
+        {
+            "Seat": 1,
+            "Player": 0,
+            "Stack": 100
+        },
+        {
+            "Seat": 4,
+            "Player": 1,
+            "Stack": 100
+        },
+        {
+            "Seat": 2,
+            "Player": 2,
+            "Stack": 100
+        },
+        {
+            "Seat": 3,
+            "Player": 3,
+            "Stack": 100
+        },
+        {
+            "Seat": 0,
+            "Player": 4,
+            "Stack": 100
+        }
+    ],
+    "Blinds": {
+        "Small": {
+            "Player": 4,
+            "Amount": 1
+        },
+        "Big": {
+            "Player": 0,
+            "Amount": 2
+        }
+    },
+    "Actions": {
+        "PreFlop": [
+            {
+                "Player": 2,
+                "Action": "Fold"
+            },
+            {
+                "Player": 3,
+                "Action": "Raise",
+                "Amount": 4.0
+            },
+            {
+                "Player": 1,
+                "Action": "Call",
+                "Amount": 4.0
+            },
+            {
+                "Player": 4,
+                "Action": "Fold"
+            },
+            {
+                "Player": 0,
+                "Action": "Fold"
+            }
+        ],
+        "Flop": {
+            "Cards": [
+                "Jh",
+                "Js",
+                "6c"
+            ],
+            "Actions": [
+                {
+                    "Player": 3,
+                    "Action": "Bet",
+                    "Amount": 12.0
+                },
+                {
+                    "Player": 1,
+                    "Action": "Call",
+                    "Amount": 12.0
+                }
+            ]
+        },
+        "Turn": {
+            "Card": "7",
+            "Actions": [
+                {
+                    "Player": 3,
+                    "Action": "Bet",
+                    "Amount": 84.0
+                },
+                {
+                    "Player": 1,
+                    "Action": "Call",
+                    "Amount": 84.0
+                }
+            ]
+        },
+        "River": {
+            "Card": null,
+            "Actions": []
+        },
+        "ShowDown": []
+    },
+    "Summary": {
+        "Board": [
+            "Jh",
+            "Js",
+            "6c",
+            "Ts",
+            "7h"
+        ],
+        "WinningHand": [],
+        "PotDistribution": [],
+        "StackChanges": {
+            "0": -2,
+            "1": -100.0,
+            "2": 0,
+            "3": 103.0,
+            "4": -1
+        },
+        "MainPot": {
+            "Amount": 203.0,
+            "Winners": [
+                3
+            ]
+        },
+        "SidePots": []
+    }
+}

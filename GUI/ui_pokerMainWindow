@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 ################################################################################
-## Form generated from reading UI file 'pokerMainWindowSyGjiK.ui'
+## Form generated from reading UI file 'pokerMainWindowdeDGPK.ui'
 ##
 ## Created by: Qt User Interface Compiler version 5.15.2
 ##
@@ -88,7 +88,7 @@ class Ui_MainWindow(object):
 
         self.player1 = QWidget(self.centralwidget)
         self.player1.setObjectName(u"player1")
-        self.player1.setGeometry(QRect(250, 510, 95, 72))
+        self.player1.setGeometry(QRect(250, 520, 95, 72))
         palette2 = QPalette()
         palette2.setBrush(QPalette.Active, QPalette.Button, brush1)
         palette2.setBrush(QPalette.Active, QPalette.Base, brush1)
@@ -123,7 +123,7 @@ class Ui_MainWindow(object):
 
         self.player2 = QWidget(self.centralwidget)
         self.player2.setObjectName(u"player2")
-        self.player2.setGeometry(QRect(70, 380, 95, 72))
+        self.player2.setGeometry(QRect(50, 390, 95, 72))
         palette3 = QPalette()
         palette3.setBrush(QPalette.Active, QPalette.Button, brush1)
         palette3.setBrush(QPalette.Active, QPalette.Base, brush1)
@@ -158,7 +158,7 @@ class Ui_MainWindow(object):
 
         self.player3 = QWidget(self.centralwidget)
         self.player3.setObjectName(u"player3")
-        self.player3.setGeometry(QRect(70, 230, 95, 72))
+        self.player3.setGeometry(QRect(50, 230, 95, 72))
         palette4 = QPalette()
         palette4.setBrush(QPalette.Active, QPalette.Button, brush1)
         palette4.setBrush(QPalette.Active, QPalette.Base, brush1)
@@ -193,7 +193,7 @@ class Ui_MainWindow(object):
 
         self.player4 = QWidget(self.centralwidget)
         self.player4.setObjectName(u"player4")
-        self.player4.setGeometry(QRect(290, 100, 95, 72))
+        self.player4.setGeometry(QRect(240, 70, 95, 72))
         palette5 = QPalette()
         palette5.setBrush(QPalette.Active, QPalette.Button, brush1)
         palette5.setBrush(QPalette.Active, QPalette.Base, brush1)
@@ -228,7 +228,7 @@ class Ui_MainWindow(object):
 
         self.player5 = QWidget(self.centralwidget)
         self.player5.setObjectName(u"player5")
-        self.player5.setGeometry(QRect(510, 100, 95, 72))
+        self.player5.setGeometry(QRect(460, 80, 95, 72))
         palette6 = QPalette()
         palette6.setBrush(QPalette.Active, QPalette.Button, brush1)
         palette6.setBrush(QPalette.Active, QPalette.Base, brush1)
@@ -263,7 +263,7 @@ class Ui_MainWindow(object):
 
         self.player6 = QWidget(self.centralwidget)
         self.player6.setObjectName(u"player6")
-        self.player6.setGeometry(QRect(710, 100, 95, 72))
+        self.player6.setGeometry(QRect(710, 80, 95, 72))
         palette7 = QPalette()
         palette7.setBrush(QPalette.Active, QPalette.Button, brush1)
         palette7.setBrush(QPalette.Active, QPalette.Base, brush1)
@@ -298,7 +298,7 @@ class Ui_MainWindow(object):
 
         self.player7 = QWidget(self.centralwidget)
         self.player7.setObjectName(u"player7")
-        self.player7.setGeometry(QRect(870, 250, 95, 72))
+        self.player7.setGeometry(QRect(880, 210, 95, 72))
         palette8 = QPalette()
         palette8.setBrush(QPalette.Active, QPalette.Button, brush1)
         palette8.setBrush(QPalette.Active, QPalette.Base, brush1)
@@ -333,7 +333,7 @@ class Ui_MainWindow(object):
 
         self.player8 = QWidget(self.centralwidget)
         self.player8.setObjectName(u"player8")
-        self.player8.setGeometry(QRect(870, 400, 95, 72))
+        self.player8.setGeometry(QRect(880, 360, 95, 72))
         palette9 = QPalette()
         palette9.setBrush(QPalette.Active, QPalette.Button, brush1)
         palette9.setBrush(QPalette.Active, QPalette.Base, brush1)
@@ -366,340 +366,48 @@ class Ui_MainWindow(object):
 
         self.verticalLayout_9.addWidget(self.chipcountPlayer_8)
 
-        self.potLabel = QLabel(self.centralwidget)
-        self.potLabel.setObjectName(u"potLabel")
-        self.potLabel.setGeometry(QRect(420, 370, 121, 31))
+        self.label = QLabel(self.centralwidget)
+        self.label.setObjectName(u"label")
+        self.label.setGeometry(QRect(440, 320, 121, 31))
         font1 = QFont()
         font1.setPointSize(14)
-        self.potLabel.setFont(font1)
-        self.potLabel.setStyleSheet(u"color: rgb(255, 255, 255);")
-        self.button0 = QLabel(self.centralwidget)
-        self.button0.setObjectName(u"button0")
-        self.button0.setGeometry(QRect(580, 470, 28, 28))
+        self.label.setFont(font1)
+        self.label.setStyleSheet(u"color: rgb(255, 255, 255);")
+        self.button = QLabel(self.centralwidget)
+        self.button.setObjectName(u"button")
+        self.button.setGeometry(QRect(440, 450, 28, 28))
         font2 = QFont()
         font2.setFamily(u"MS Reference Sans Serif")
         font2.setPointSize(12)
         font2.setBold(True)
         font2.setWeight(75)
-        self.button0.setFont(font2)
-        self.button0.setStyleSheet(u"    border: 2px solid black; /* Black border */\n"
+        self.button.setFont(font2)
+        self.button.setStyleSheet(u"    border: 2px solid black; /* Black border */\n"
 "    border-radius: 12px; /* Half of the width and height to make it round */\n"
 "    background-color: white; /* White background or any color you want for the button */\n"
 "    min-width: 24px; /* Minimum width for the circle */\n"
 "    min-height: 24px; /* Minimum height for the circle */\n"
 "    max-width: 24px; /* Maximum width to enforce a circle shape */\n"
 "    max-height: 24px; /* Maximum height to enforce a circle shape */")
-        self.button0.setAlignment(Qt.AlignCenter)
+        self.button.setAlignment(Qt.AlignCenter)
         self.foldButton = QPushButton(self.centralwidget)
         self.foldButton.setObjectName(u"foldButton")
         self.foldButton.setGeometry(QRect(610, 520, 51, 41))
         self.checkCallButton = QPushButton(self.centralwidget)
         self.checkCallButton.setObjectName(u"checkCallButton")
         self.checkCallButton.setGeometry(QRect(670, 520, 51, 41))
-        self.betSizeSlider = QSlider(self.centralwidget)
-        self.betSizeSlider.setObjectName(u"betSizeSlider")
-        self.betSizeSlider.setGeometry(QRect(617, 571, 91, 22))
-        self.betSizeSlider.setMinimum(1)
-        self.betSizeSlider.setMaximum(100)
-        self.betSizeSlider.setOrientation(Qt.Horizontal)
+        self.raiseSlider = QSlider(self.centralwidget)
+        self.raiseSlider.setObjectName(u"raiseSlider")
+        self.raiseSlider.setGeometry(QRect(609, 571, 91, 22))
+        self.raiseSlider.setMinimum(1)
+        self.raiseSlider.setMaximum(100)
+        self.raiseSlider.setOrientation(Qt.Horizontal)
         self.raiseAmountLineEdit = QLineEdit(self.centralwidget)
         self.raiseAmountLineEdit.setObjectName(u"raiseAmountLineEdit")
         self.raiseAmountLineEdit.setGeometry(QRect(710, 566, 71, 31))
         self.betRaiseButton = QPushButton(self.centralwidget)
         self.betRaiseButton.setObjectName(u"betRaiseButton")
         self.betRaiseButton.setGeometry(QRect(730, 520, 51, 41))
-        self.holecardP00 = QLabel(self.centralwidget)
-        self.holecardP00.setObjectName(u"holecardP00")
-        self.holecardP00.setGeometry(QRect(470, 450, 61, 71))
-        self.holecardP01 = QLabel(self.centralwidget)
-        self.holecardP01.setObjectName(u"holecardP01")
-        self.holecardP01.setGeometry(QRect(520, 450, 61, 71))
-        self.holecardP10 = QLabel(self.centralwidget)
-        self.holecardP10.setObjectName(u"holecardP10")
-        self.holecardP10.setGeometry(QRect(240, 447, 61, 71))
-        self.holecardP11 = QLabel(self.centralwidget)
-        self.holecardP11.setObjectName(u"holecardP11")
-        self.holecardP11.setGeometry(QRect(290, 447, 61, 71))
-        self.holecardP20 = QLabel(self.centralwidget)
-        self.holecardP20.setObjectName(u"holecardP20")
-        self.holecardP20.setGeometry(QRect(60, 310, 61, 71))
-        self.holecardP21 = QLabel(self.centralwidget)
-        self.holecardP21.setObjectName(u"holecardP21")
-        self.holecardP21.setGeometry(QRect(110, 310, 61, 71))
-        self.holecardP31 = QLabel(self.centralwidget)
-        self.holecardP31.setObjectName(u"holecardP31")
-        self.holecardP31.setGeometry(QRect(110, 160, 61, 71))
-        self.holecardP30 = QLabel(self.centralwidget)
-        self.holecardP30.setObjectName(u"holecardP30")
-        self.holecardP30.setGeometry(QRect(60, 160, 61, 71))
-        self.holecardP40 = QLabel(self.centralwidget)
-        self.holecardP40.setObjectName(u"holecardP40")
-        self.holecardP40.setGeometry(QRect(330, 30, 61, 71))
-        self.holecardP41 = QLabel(self.centralwidget)
-        self.holecardP41.setObjectName(u"holecardP41")
-        self.holecardP41.setGeometry(QRect(280, 30, 61, 71))
-        self.holecardP51 = QLabel(self.centralwidget)
-        self.holecardP51.setObjectName(u"holecardP51")
-        self.holecardP51.setGeometry(QRect(500, 30, 61, 71))
-        self.holecardP50 = QLabel(self.centralwidget)
-        self.holecardP50.setObjectName(u"holecardP50")
-        self.holecardP50.setGeometry(QRect(550, 30, 61, 71))
-        self.holecardP60 = QLabel(self.centralwidget)
-        self.holecardP60.setObjectName(u"holecardP60")
-        self.holecardP60.setGeometry(QRect(750, 30, 61, 71))
-        self.holecardP61 = QLabel(self.centralwidget)
-        self.holecardP61.setObjectName(u"holecardP61")
-        self.holecardP61.setGeometry(QRect(700, 30, 61, 71))
-        self.holecardP70 = QLabel(self.centralwidget)
-        self.holecardP70.setObjectName(u"holecardP70")
-        self.holecardP70.setGeometry(QRect(860, 180, 61, 71))
-        self.holecardP71 = QLabel(self.centralwidget)
-        self.holecardP71.setObjectName(u"holecardP71")
-        self.holecardP71.setGeometry(QRect(910, 180, 61, 71))
-        self.holecardP80 = QLabel(self.centralwidget)
-        self.holecardP80.setObjectName(u"holecardP80")
-        self.holecardP80.setGeometry(QRect(860, 330, 61, 71))
-        self.holecardP81 = QLabel(self.centralwidget)
-        self.holecardP81.setObjectName(u"holecardP81")
-        self.holecardP81.setGeometry(QRect(910, 330, 61, 71))
-        self.button1 = QLabel(self.centralwidget)
-        self.button1.setObjectName(u"button1")
-        self.button1.setGeometry(QRect(340, 470, 28, 28))
-        self.button1.setFont(font2)
-        self.button1.setStyleSheet(u"    border: 2px solid black; /* Black border */\n"
-"    border-radius: 12px; /* Half of the width and height to make it round */\n"
-"    background-color: white; /* White background or any color you want for the button */\n"
-"    min-width: 24px; /* Minimum width for the circle */\n"
-"    min-height: 24px; /* Minimum height for the circle */\n"
-"    max-width: 24px; /* Maximum width to enforce a circle shape */\n"
-"    max-height: 24px; /* Maximum height to enforce a circle shape */")
-        self.button1.setAlignment(Qt.AlignCenter)
-        self.button2 = QLabel(self.centralwidget)
-        self.button2.setObjectName(u"button2")
-        self.button2.setGeometry(QRect(180, 430, 28, 28))
-        self.button2.setFont(font2)
-        self.button2.setStyleSheet(u"    border: 2px solid black; /* Black border */\n"
-"    border-radius: 12px; /* Half of the width and height to make it round */\n"
-"    background-color: white; /* White background or any color you want for the button */\n"
-"    min-width: 24px; /* Minimum width for the circle */\n"
-"    min-height: 24px; /* Minimum height for the circle */\n"
-"    max-width: 24px; /* Maximum width to enforce a circle shape */\n"
-"    max-height: 24px; /* Maximum height to enforce a circle shape */")
-        self.button2.setAlignment(Qt.AlignCenter)
-        self.button3 = QLabel(self.centralwidget)
-        self.button3.setObjectName(u"button3")
-        self.button3.setGeometry(QRect(180, 210, 28, 28))
-        self.button3.setFont(font2)
-        self.button3.setStyleSheet(u"    border: 2px solid black; /* Black border */\n"
-"    border-radius: 12px; /* Half of the width and height to make it round */\n"
-"    background-color: white; /* White background or any color you want for the button */\n"
-"    min-width: 24px; /* Minimum width for the circle */\n"
-"    min-height: 24px; /* Minimum height for the circle */\n"
-"    max-width: 24px; /* Maximum width to enforce a circle shape */\n"
-"    max-height: 24px; /* Maximum height to enforce a circle shape */")
-        self.button3.setAlignment(Qt.AlignCenter)
-        self.button4 = QLabel(self.centralwidget)
-        self.button4.setObjectName(u"button4")
-        self.button4.setGeometry(QRect(380, 180, 28, 28))
-        self.button4.setFont(font2)
-        self.button4.setStyleSheet(u"    border: 2px solid black; /* Black border */\n"
-"    border-radius: 12px; /* Half of the width and height to make it round */\n"
-"    background-color: white; /* White background or any color you want for the button */\n"
-"    min-width: 24px; /* Minimum width for the circle */\n"
-"    min-height: 24px; /* Minimum height for the circle */\n"
-"    max-width: 24px; /* Maximum width to enforce a circle shape */\n"
-"    max-height: 24px; /* Maximum height to enforce a circle shape */")
-        self.button4.setAlignment(Qt.AlignCenter)
-        self.button5 = QLabel(self.centralwidget)
-        self.button5.setObjectName(u"button5")
-        self.button5.setGeometry(QRect(600, 180, 28, 28))
-        self.button5.setFont(font2)
-        self.button5.setStyleSheet(u"    border: 2px solid black; /* Black border */\n"
-"    border-radius: 12px; /* Half of the width and height to make it round */\n"
-"    background-color: white; /* White background or any color you want for the button */\n"
-"    min-width: 24px; /* Minimum width for the circle */\n"
-"    min-height: 24px; /* Minimum height for the circle */\n"
-"    max-width: 24px; /* Maximum width to enforce a circle shape */\n"
-"    max-height: 24px; /* Maximum height to enforce a circle shape */")
-        self.button5.setAlignment(Qt.AlignCenter)
-        self.button6 = QLabel(self.centralwidget)
-        self.button6.setObjectName(u"button6")
-        self.button6.setGeometry(QRect(790, 180, 28, 28))
-        self.button6.setFont(font2)
-        self.button6.setStyleSheet(u"    border: 2px solid black; /* Black border */\n"
-"    border-radius: 12px; /* Half of the width and height to make it round */\n"
-"    background-color: white; /* White background or any color you want for the button */\n"
-"    min-width: 24px; /* Minimum width for the circle */\n"
-"    min-height: 24px; /* Minimum height for the circle */\n"
-"    max-width: 24px; /* Maximum width to enforce a circle shape */\n"
-"    max-height: 24px; /* Maximum height to enforce a circle shape */")
-        self.button6.setAlignment(Qt.AlignCenter)
-        self.button7 = QLabel(self.centralwidget)
-        self.button7.setObjectName(u"button7")
-        self.button7.setGeometry(QRect(840, 310, 28, 28))
-        self.button7.setFont(font2)
-        self.button7.setStyleSheet(u"    border: 2px solid black; /* Black border */\n"
-"    border-radius: 12px; /* Half of the width and height to make it round */\n"
-"    background-color: white; /* White background or any color you want for the button */\n"
-"    min-width: 24px; /* Minimum width for the circle */\n"
-"    min-height: 24px; /* Minimum height for the circle */\n"
-"    max-width: 24px; /* Maximum width to enforce a circle shape */\n"
-"    max-height: 24px; /* Maximum height to enforce a circle shape */")
-        self.button7.setAlignment(Qt.AlignCenter)
-        self.button8 = QLabel(self.centralwidget)
-        self.button8.setObjectName(u"button8")
-        self.button8.setGeometry(QRect(810, 460, 28, 28))
-        self.button8.setFont(font2)
-        self.button8.setStyleSheet(u"    border: 2px solid black; /* Black border */\n"
-"    border-radius: 12px; /* Half of the width and height to make it round */\n"
-"    background-color: white; /* White background or any color you want for the button */\n"
-"    min-width: 24px; /* Minimum width for the circle */\n"
-"    min-height: 24px; /* Minimum height for the circle */\n"
-"    max-width: 24px; /* Maximum width to enforce a circle shape */\n"
-"    max-height: 24px; /* Maximum height to enforce a circle shape */")
-        self.button8.setAlignment(Qt.AlignCenter)
-        self.bet_0 = QLabel(self.centralwidget)
-        self.bet_0.setObjectName(u"bet_0")
-        self.bet_0.setGeometry(QRect(480, 410, 81, 31))
-        self.bet_0.setFont(font1)
-        self.bet_0.setStyleSheet(u"color: rgb(255, 255, 255);")
-        self.bet_1 = QLabel(self.centralwidget)
-        self.bet_1.setObjectName(u"bet_1")
-        self.bet_1.setGeometry(QRect(320, 410, 81, 31))
-        self.bet_1.setFont(font1)
-        self.bet_1.setStyleSheet(u"color: rgb(255, 255, 255);")
-        self.bet_2 = QLabel(self.centralwidget)
-        self.bet_2.setObjectName(u"bet_2")
-        self.bet_2.setGeometry(QRect(220, 380, 81, 31))
-        self.bet_2.setFont(font1)
-        self.bet_2.setStyleSheet(u"color: rgb(255, 255, 255);")
-        self.bet_3 = QLabel(self.centralwidget)
-        self.bet_3.setObjectName(u"bet_3")
-        self.bet_3.setGeometry(QRect(190, 280, 81, 31))
-        self.bet_3.setFont(font1)
-        self.bet_3.setStyleSheet(u"color: rgb(255, 255, 255);")
-        self.bet_4 = QLabel(self.centralwidget)
-        self.bet_4.setObjectName(u"bet_4")
-        self.bet_4.setGeometry(QRect(280, 190, 81, 31))
-        self.bet_4.setFont(font1)
-        self.bet_4.setStyleSheet(u"color: rgb(255, 255, 255);")
-        self.bet_5 = QLabel(self.centralwidget)
-        self.bet_5.setObjectName(u"bet_5")
-        self.bet_5.setGeometry(QRect(510, 190, 81, 31))
-        self.bet_5.setFont(font1)
-        self.bet_5.setStyleSheet(u"color: rgb(255, 255, 255);")
-        self.bet_6 = QLabel(self.centralwidget)
-        self.bet_6.setObjectName(u"bet_6")
-        self.bet_6.setGeometry(QRect(700, 190, 81, 31))
-        self.bet_6.setFont(font1)
-        self.bet_6.setStyleSheet(u"color: rgb(255, 255, 255);")
-        self.bet_7 = QLabel(self.centralwidget)
-        self.bet_7.setObjectName(u"bet_7")
-        self.bet_7.setGeometry(QRect(770, 270, 81, 31))
-        self.bet_7.setFont(font1)
-        self.bet_7.setStyleSheet(u"color: rgb(255, 255, 255);")
-        self.bet_8 = QLabel(self.centralwidget)
-        self.bet_8.setObjectName(u"bet_8")
-        self.bet_8.setGeometry(QRect(770, 410, 81, 31))
-        self.bet_8.setFont(font1)
-        self.bet_8.setStyleSheet(u"color: rgb(255, 255, 255);")
-        self.layoutWidget = QWidget(self.centralwidget)
-        self.layoutWidget.setObjectName(u"layoutWidget")
-        self.layoutWidget.setGeometry(QRect(370, 270, 321, 91))
-        self.horizontalLayout = QHBoxLayout(self.layoutWidget)
-        self.horizontalLayout.setObjectName(u"horizontalLayout")
-        self.horizontalLayout.setContentsMargins(0, 0, 0, 0)
-        self.flop_0 = QLabel(self.layoutWidget)
-        self.flop_0.setObjectName(u"flop_0")
-
-        self.horizontalLayout.addWidget(self.flop_0)
-
-        self.flop_1 = QLabel(self.layoutWidget)
-        self.flop_1.setObjectName(u"flop_1")
-
-        self.horizontalLayout.addWidget(self.flop_1)
-
-        self.flop_2 = QLabel(self.layoutWidget)
-        self.flop_2.setObjectName(u"flop_2")
-
-        self.horizontalLayout.addWidget(self.flop_2)
-
-        self.turn = QLabel(self.layoutWidget)
-        self.turn.setObjectName(u"turn")
-
-        self.horizontalLayout.addWidget(self.turn)
-
-        self.river = QLabel(self.layoutWidget)
-        self.river.setObjectName(u"river")
-
-        self.horizontalLayout.addWidget(self.river)
-
-        self.buttonNextHand = QPushButton(self.centralwidget)
-        self.buttonNextHand.setObjectName(u"buttonNextHand")
-        self.buttonNextHand.setGeometry(QRect(70, 560, 101, 41))
-        self.check_0 = QLabel(self.centralwidget)
-        self.check_0.setObjectName(u"check_0")
-        self.check_0.setGeometry(QRect(470, 590, 113, 24))
-        self.check_0.setFont(font)
-        self.check_0.setStyleSheet(u"    background-color: transparent; /* Makes the background of labels transparent */\n"
-"    border: none; /* Removes borders from labels if any */")
-        self.check_0.setAlignment(Qt.AlignCenter)
-        self.check_1 = QLabel(self.centralwidget)
-        self.check_1.setObjectName(u"check_1")
-        self.check_1.setGeometry(QRect(240, 580, 113, 24))
-        self.check_1.setFont(font)
-        self.check_1.setStyleSheet(u"    background-color: transparent; /* Makes the background of labels transparent */\n"
-"    border: none; /* Removes borders from labels if any */")
-        self.check_1.setAlignment(Qt.AlignCenter)
-        self.check_2 = QLabel(self.centralwidget)
-        self.check_2.setObjectName(u"check_2")
-        self.check_2.setGeometry(QRect(-20, 400, 113, 24))
-        self.check_2.setFont(font)
-        self.check_2.setStyleSheet(u"    background-color: transparent; /* Makes the background of labels transparent */\n"
-"    border: none; /* Removes borders from labels if any */")
-        self.check_2.setAlignment(Qt.AlignCenter)
-        self.check_3 = QLabel(self.centralwidget)
-        self.check_3.setObjectName(u"check_3")
-        self.check_3.setGeometry(QRect(-20, 250, 113, 24))
-        self.check_3.setFont(font)
-        self.check_3.setStyleSheet(u"    background-color: transparent; /* Makes the background of labels transparent */\n"
-"    border: none; /* Removes borders from labels if any */")
-        self.check_3.setAlignment(Qt.AlignCenter)
-        self.check_4 = QLabel(self.centralwidget)
-        self.check_4.setObjectName(u"check_4")
-        self.check_4.setGeometry(QRect(200, 120, 113, 24))
-        self.check_4.setFont(font)
-        self.check_4.setStyleSheet(u"    background-color: transparent; /* Makes the background of labels transparent */\n"
-"    border: none; /* Removes borders from labels if any */")
-        self.check_4.setAlignment(Qt.AlignCenter)
-        self.check_5 = QLabel(self.centralwidget)
-        self.check_5.setObjectName(u"check_5")
-        self.check_5.setGeometry(QRect(420, 120, 113, 24))
-        self.check_5.setFont(font)
-        self.check_5.setStyleSheet(u"    background-color: transparent; /* Makes the background of labels transparent */\n"
-"    border: none; /* Removes borders from labels if any */")
-        self.check_5.setAlignment(Qt.AlignCenter)
-        self.check_6 = QLabel(self.centralwidget)
-        self.check_6.setObjectName(u"check_6")
-        self.check_6.setGeometry(QRect(620, 120, 113, 24))
-        self.check_6.setFont(font)
-        self.check_6.setStyleSheet(u"    background-color: transparent; /* Makes the background of labels transparent */\n"
-"    border: none; /* Removes borders from labels if any */")
-        self.check_6.setAlignment(Qt.AlignCenter)
-        self.check_7 = QLabel(self.centralwidget)
-        self.check_7.setObjectName(u"check_7")
-        self.check_7.setGeometry(QRect(942, 270, 113, 24))
-        self.check_7.setFont(font)
-        self.check_7.setStyleSheet(u"    background-color: transparent; /* Makes the background of labels transparent */\n"
-"    border: none; /* Removes borders from labels if any */")
-        self.check_7.setAlignment(Qt.AlignCenter)
-        self.check_8 = QLabel(self.centralwidget)
-        self.check_8.setObjectName(u"check_8")
-        self.check_8.setGeometry(QRect(941, 420, 113, 24))
-        self.check_8.setFont(font)
-        self.check_8.setStyleSheet(u"    background-color: transparent; /* Makes the background of labels transparent */\n"
-"    border: none; /* Removes borders from labels if any */")
-        self.check_8.setAlignment(Qt.AlignCenter)
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QMenuBar(MainWindow)
         self.menubar.setObjectName(u"menubar")
@@ -734,61 +442,11 @@ class Ui_MainWindow(object):
         self.chipcountPlayer_7.setText(QCoreApplication.translate("MainWindow", u"100", None))
         self.labelPlayerName_8.setText(QCoreApplication.translate("MainWindow", u"Player 8", None))
         self.chipcountPlayer_8.setText(QCoreApplication.translate("MainWindow", u"100", None))
-        self.potLabel.setText(QCoreApplication.translate("MainWindow", u"Pot: 0", None))
-        self.button0.setText(QCoreApplication.translate("MainWindow", u"D", None))
+        self.label.setText(QCoreApplication.translate("MainWindow", u"Pot: 0", None))
+        self.button.setText(QCoreApplication.translate("MainWindow", u"D", None))
         self.foldButton.setText(QCoreApplication.translate("MainWindow", u"Fold", None))
         self.checkCallButton.setText(QCoreApplication.translate("MainWindow", u"Check", None))
         self.raiseAmountLineEdit.setText(QCoreApplication.translate("MainWindow", u"0", None))
         self.betRaiseButton.setText(QCoreApplication.translate("MainWindow", u"Bet", None))
-        self.holecardP00.setText("")
-        self.holecardP01.setText("")
-        self.holecardP10.setText("")
-        self.holecardP11.setText("")
-        self.holecardP20.setText("")
-        self.holecardP21.setText("")
-        self.holecardP31.setText("")
-        self.holecardP30.setText("")
-        self.holecardP40.setText("")
-        self.holecardP41.setText("")
-        self.holecardP51.setText("")
-        self.holecardP50.setText("")
-        self.holecardP60.setText("")
-        self.holecardP61.setText("")
-        self.holecardP70.setText("")
-        self.holecardP71.setText("")
-        self.holecardP80.setText("")
-        self.holecardP81.setText("")
-        self.button1.setText(QCoreApplication.translate("MainWindow", u"D", None))
-        self.button2.setText(QCoreApplication.translate("MainWindow", u"D", None))
-        self.button3.setText(QCoreApplication.translate("MainWindow", u"D", None))
-        self.button4.setText(QCoreApplication.translate("MainWindow", u"D", None))
-        self.button5.setText(QCoreApplication.translate("MainWindow", u"D", None))
-        self.button6.setText(QCoreApplication.translate("MainWindow", u"D", None))
-        self.button7.setText(QCoreApplication.translate("MainWindow", u"D", None))
-        self.button8.setText(QCoreApplication.translate("MainWindow", u"D", None))
-        self.bet_0.setText("")
-        self.bet_1.setText("")
-        self.bet_2.setText("")
-        self.bet_3.setText("")
-        self.bet_4.setText("")
-        self.bet_5.setText("")
-        self.bet_6.setText("")
-        self.bet_7.setText("")
-        self.bet_8.setText("")
-        self.flop_0.setText("")
-        self.flop_1.setText("")
-        self.flop_2.setText("")
-        self.turn.setText("")
-        self.river.setText("")
-        self.buttonNextHand.setText(QCoreApplication.translate("MainWindow", u"Next Hand", None))
-        self.check_0.setText(QCoreApplication.translate("MainWindow", u"Check!", None))
-        self.check_1.setText(QCoreApplication.translate("MainWindow", u"Check!", None))
-        self.check_2.setText(QCoreApplication.translate("MainWindow", u"Check!", None))
-        self.check_3.setText(QCoreApplication.translate("MainWindow", u"Check!", None))
-        self.check_4.setText(QCoreApplication.translate("MainWindow", u"Check!", None))
-        self.check_5.setText(QCoreApplication.translate("MainWindow", u"Check!", None))
-        self.check_6.setText(QCoreApplication.translate("MainWindow", u"Check!", None))
-        self.check_7.setText(QCoreApplication.translate("MainWindow", u"Check!", None))
-        self.check_8.setText(QCoreApplication.translate("MainWindow", u"Check!", None))
     # retranslateUi
 

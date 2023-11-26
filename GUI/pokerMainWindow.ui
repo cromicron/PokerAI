@@ -2154,7 +2154,7 @@ font: 14pt &quot;MS Reference Sans Serif&quot;;
      <string/>
     </property>
    </widget>
-   <widget class="QWidget" name="">
+   <widget class="QWidget" name="layoutWidget">
     <property name="geometry">
      <rect>
       <x>370</x>
@@ -2200,6 +2200,289 @@ font: 14pt &quot;MS Reference Sans Serif&quot;;
       </widget>
      </item>
     </layout>
+   </widget>
+   <widget class="QPushButton" name="buttonNextHand">
+    <property name="geometry">
+     <rect>
+      <x>70</x>
+      <y>560</y>
+      <width>101</width>
+      <height>41</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Next Hand</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="check_0">
+    <property name="geometry">
+     <rect>
+      <x>470</x>
+      <y>590</y>
+      <width>113</width>
+      <height>24</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <family>MS Reference Sans Serif</family>
+      <pointsize>14</pointsize>
+      <weight>50</weight>
+      <italic>false</italic>
+      <bold>false</bold>
+      <strikeout>false</strikeout>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">    background-color: transparent; /* Makes the background of labels transparent */
+    border: none; /* Removes borders from labels if any */</string>
+    </property>
+    <property name="text">
+     <string>Check!</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
+    </property>
+   </widget>
+   <widget class="QLabel" name="check_1">
+    <property name="geometry">
+     <rect>
+      <x>240</x>
+      <y>580</y>
+      <width>113</width>
+      <height>24</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <family>MS Reference Sans Serif</family>
+      <pointsize>14</pointsize>
+      <weight>50</weight>
+      <italic>false</italic>
+      <bold>false</bold>
+      <strikeout>false</strikeout>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">    background-color: transparent; /* Makes the background of labels transparent */
+    border: none; /* Removes borders from labels if any */</string>
+    </property>
+    <property name="text">
+     <string>Check!</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
+    </property>
+   </widget>
+   <widget class="QLabel" name="check_2">
+    <property name="geometry">
+     <rect>
+      <x>-20</x>
+      <y>400</y>
+      <width>113</width>
+      <height>24</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <family>MS Reference Sans Serif</family>
+      <pointsize>14</pointsize>
+      <weight>50</weight>
+      <italic>false</italic>
+      <bold>false</bold>
+      <strikeout>false</strikeout>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">    background-color: transparent; /* Makes the background of labels transparent */
+    border: none; /* Removes borders from labels if any */</string>
+    </property>
+    <property name="text">
+     <string>Check!</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
+    </property>
+   </widget>
+   <widget class="QLabel" name="check_3">
+    <property name="geometry">
+     <rect>
+      <x>-20</x>
+      <y>250</y>
+      <width>113</width>
+      <height>24</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <family>MS Reference Sans Serif</family>
+      <pointsize>14</pointsize>
+      <weight>50</weight>
+      <italic>false</italic>
+      <bold>false</bold>
+      <strikeout>false</strikeout>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">    background-color: transparent; /* Makes the background of labels transparent */
+    border: none; /* Removes borders from labels if any */</string>
+    </property>
+    <property name="text">
+     <string>Check!</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
+    </property>
+   </widget>
+   <widget class="QLabel" name="check_4">
+    <property name="geometry">
+     <rect>
+      <x>200</x>
+      <y>120</y>
+      <width>113</width>
+      <height>24</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <family>MS Reference Sans Serif</family>
+      <pointsize>14</pointsize>
+      <weight>50</weight>
+      <italic>false</italic>
+      <bold>false</bold>
+      <strikeout>false</strikeout>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">    background-color: transparent; /* Makes the background of labels transparent */
+    border: none; /* Removes borders from labels if any */</string>
+    </property>
+    <property name="text">
+     <string>Check!</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
+    </property>
+   </widget>
+   <widget class="QLabel" name="check_5">
+    <property name="geometry">
+     <rect>
+      <x>420</x>
+      <y>120</y>
+      <width>113</width>
+      <height>24</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <family>MS Reference Sans Serif</family>
+      <pointsize>14</pointsize>
+      <weight>50</weight>
+      <italic>false</italic>
+      <bold>false</bold>
+      <strikeout>false</strikeout>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">    background-color: transparent; /* Makes the background of labels transparent */
+    border: none; /* Removes borders from labels if any */</string>
+    </property>
+    <property name="text">
+     <string>Check!</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
+    </property>
+   </widget>
+   <widget class="QLabel" name="check_6">
+    <property name="geometry">
+     <rect>
+      <x>620</x>
+      <y>120</y>
+      <width>113</width>
+      <height>24</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <family>MS Reference Sans Serif</family>
+      <pointsize>14</pointsize>
+      <weight>50</weight>
+      <italic>false</italic>
+      <bold>false</bold>
+      <strikeout>false</strikeout>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">    background-color: transparent; /* Makes the background of labels transparent */
+    border: none; /* Removes borders from labels if any */</string>
+    </property>
+    <property name="text">
+     <string>Check!</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
+    </property>
+   </widget>
+   <widget class="QLabel" name="check_7">
+    <property name="geometry">
+     <rect>
+      <x>942</x>
+      <y>270</y>
+      <width>113</width>
+      <height>24</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <family>MS Reference Sans Serif</family>
+      <pointsize>14</pointsize>
+      <weight>50</weight>
+      <italic>false</italic>
+      <bold>false</bold>
+      <strikeout>false</strikeout>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">    background-color: transparent; /* Makes the background of labels transparent */
+    border: none; /* Removes borders from labels if any */</string>
+    </property>
+    <property name="text">
+     <string>Check!</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
+    </property>
+   </widget>
+   <widget class="QLabel" name="check_8">
+    <property name="geometry">
+     <rect>
+      <x>941</x>
+      <y>420</y>
+      <width>113</width>
+      <height>24</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <family>MS Reference Sans Serif</family>
+      <pointsize>14</pointsize>
+      <weight>50</weight>
+      <italic>false</italic>
+      <bold>false</bold>
+      <strikeout>false</strikeout>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">    background-color: transparent; /* Makes the background of labels transparent */
+    border: none; /* Removes borders from labels if any */</string>
+    </property>
+    <property name="text">
+     <string>Check!</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
+    </property>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
