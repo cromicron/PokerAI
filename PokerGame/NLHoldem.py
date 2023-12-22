@@ -485,7 +485,7 @@ class HandHistory:
         if street_name == "Flop":
             self.hand_history["Actions"][street_name]["Cards"] = cards
         elif street_name in ["Turn", "River"]:
-            self.hand_history["Actions"][street_name]["Card"] = cards[0]  # Only one card for turn and river
+            self.hand_history["Actions"][street_name]["Card"] = cards  # Only one card for turn and river
 
     def save_hand_history(self, base_directory, base_file_name):
         # Check if the base directory exists, and if not, create it
