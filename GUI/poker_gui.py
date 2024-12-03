@@ -5,7 +5,9 @@ from PySide2.QtWidgets import QDialog, QApplication, QMainWindow, QLabel, QLineE
 from PySide2.QtGui import QPixmap, QDoubleValidator
 from PySide2.QtCore import Qt, QTimer
 from PokerGame.NLHoldem import Game, value_dict, suit_dict
-
+from agents.gru_agent import Agent
+from policies.mixed_gru_policy import MixedGruPolicy
+import random
 
 class GameSetupDialog(QDialog):
     def __init__(self, parent=None):
@@ -22,6 +24,7 @@ class GameSetupDialog(QDialog):
 
         # Initialize with the current number of players
         self.on_number_of_players_changed(self.ui.spinBoxNumPlayers.value())
+
 
     def get_inputs(self):
         # Retrieve the values from the dynamically created spin boxes for starting stacks
@@ -63,6 +66,9 @@ class PokerWindow(QMainWindow, Ui_MainWindow):
         self.checkCallButton.clicked.connect(self.call)
         self.betRaiseButton.clicked.connect(self.raiseBet)
         self.buttonNextHand.clicked.connect(self.deal_new_hand)
+
+
+
         self.raiseAmountLineEdit = self.findChild(QLineEdit, 'raiseAmountLineEdit')
         # Sync the QLineEdit with the QSlider
 
@@ -206,6 +212,15 @@ class PokerWindow(QMainWindow, Ui_MainWindow):
         self.player_elements[player]["cards"][0].setVisible(True)
         self.setCardImage(self.player_elements[player]["cards"][1], self.game.players[player].holecards[1])
         self.player_elements[player]["cards"][1].setVisible(True)
+
+    def showBackside(self, player):
+        card_filename = "default.png"
+        card_path = f"cards/{card_filename}"  # Replace with the correct path
+        pixmap = QPixmap(card_path)
+        for element in self.player_elements[player]["cards"]:
+            scaled_pixmap = pixmap.scaled(element.width(), element.height(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            element.setPixmap(scaled_pixmap)
+
     def muckCards(self, player):
         self.player_elements[player]["cards"][0].setVisible(False)
         self.player_elements[player]["cards"][1].setVisible(False)
@@ -214,74 +229,100 @@ class PokerWindow(QMainWindow, Ui_MainWindow):
     def fold(self):
         current_street = self.game.street
         # handle fold action
-        index_next = self.game.players.index(self.game.next[-1])
+        index_next = self.game.players.index(self.game.acting_player)
         self.muckCards(index_next)
-        game.implement_action(self.game.next[-1], 0)
+        game.implement_action(self.game.acting_player, 0)
         if self.game.street > current_street and not self.game.finished:
             self.deal_board(current_street)
 
-
         self._set_buttons()
+        current_street = None if self.game.finished else 0
         self.check_end_of_round(current_street)
-
+        if not mainWin.game.finished:
+            self.update_ui_after_action()
+        self.process_turn()
 
     def call(self):
         current_street = self.game.street
-        player = self.game.next[-1]
-        index_next = self.game.players.index(player)
+        player = self.game.acting_player  # Get the current player
+        index_next = self.game.players.index(player)  # Get the player's index
 
         call_amount = self.game.max_bet - player.bet
-        if self.checkCallButton.text() == "Check":
+
+        # Core logic for Call/Check
+        if self.game.max_bet == 0:  # Check condition
+
             self.player_elements[index_next]["check"].show()
             QTimer.singleShot(500, self.player_elements[index_next]["check"].hide)
 
-        game.implement_action(self.game.next[-1], 1)
+        self.game.implement_action(player, 1)  # Perform the Call/Check action
+
+        # Update bet label
         bet_label = self.player_elements[index_next]["bet"]
         bet_label.setText(str(player.bet))
-        if player.bet != 0:
-            bet_label.setVisible(True)
-        else:
-            bet_label.setVisible(False)
+        bet_label.setVisible(player.bet > 0)
 
+        # Update chip count
+        if not self.game.finished:
+            chipcount_label = self.player_elements[index_next]["widget"].findChild(QLabel, f"chipcountPlayer_{index_next}")
+            chipcount_label.setText(str(player.stack))
 
-        chipcount_label = mainWin.player_elements[index_next]["widget"].findChild(QLabel, f"chipcountPlayer_{index_next}")
-        current_bet_label = chipcount_label.text()
-        new_stack_label = max(0, float(current_bet_label) - call_amount)
-        if int(new_stack_label) == float(new_stack_label):
-            new_stack_label = int(new_stack_label)
-        chipcount_label.setText(str(new_stack_label))
-
+        # Handle street progression (if applicable)
         if self.game.street > current_street and not self.game.finished:
+            update_pot = True
             self.deal_board(current_street)
+        elif self.game.finished:
+            update_pot = True
+        else:
+            update_pot = False
 
-        self._set_buttons()
+        # Update UI for human player only
+        if player == self.human_player:
+            self._set_buttons()  # Update button states for the human player
+
+        # Handle round progression
         self.check_end_of_round(current_street)
+        if not mainWin.game.finished:
+            self.update_ui_after_action(update_pot)
+        # Proceed to the next turn
+        self.process_turn()
 
-    def raiseBet(self):
-        raise_amount = float(self.raiseAmountLineEdit.text())
-        player = self.game.next[-1]
-        index_next = self.game.players.index(player)
+    def raiseBet(self, raise_amount=None):
+        player = self.game.acting_player  # Get the current player
+        index_next = self.game.players.index(player)  # Get the player's index
+
+        # Determine raise amount
+        if not raise_amount:  # Human player: Use the GUI's input
+            raise_amount = float(self.raiseAmountLineEdit.text())
 
         current_bet = player.bet
-        game.implement_action(player, 2, raise_amount)
 
+        # Execute the raise action
+        self.game.implement_action(player, 2, raise_amount)
+
+        # Update the bet label
         bet_label = self.player_elements[index_next]["bet"]
-        bet_label.setText(str(raise_amount))
-        if player.bet != 0:
-            bet_label.setVisible(True)
-        else:
-            bet_label.setVisible(False)
+        bet_label.setText(str(player.bet))
+        bet_label.setVisible(player.bet > 0)
 
+        # Calculate and update the new stack
         change_in_bet = raise_amount - current_bet
-        chipcount_label = mainWin.player_elements[index_next]["widget"].findChild(QLabel, f"chipcountPlayer_{index_next}")
-        current_bet_label = chipcount_label.text()
-        new_stack_label = float(current_bet_label) - change_in_bet
+        chipcount_label = self.player_elements[index_next]["widget"].findChild(QLabel, f"chipcountPlayer_{index_next}")
+        current_stack = float(chipcount_label.text())
+        new_stack_label = max(0, current_stack - change_in_bet)
         if int(new_stack_label) == float(new_stack_label):
             new_stack_label = int(new_stack_label)
         chipcount_label.setText(str(new_stack_label))
 
-        self._set_buttons()
+        # Handle UI updates
+        if player == self.human_player:  # Only update buttons for human players
+            self._set_buttons()
+
+        # Handle end of the round and progress the game
         self.check_end_of_round()
+        self.update_ui_after_action()
+        self.process_turn()
+
     def deal_board(self, street):
         self.potLabel.setText("Pot: " + str(self.game.pot))
         for value in self.player_elements.values():
@@ -299,35 +340,102 @@ class PokerWindow(QMainWindow, Ui_MainWindow):
 
 
     def _set_buttons(self):
-        # change labels on buttons for next player
         if len(self.game.next) != 0:
-            if self.game.max_bet == 0:
-                self.betRaiseButton.setText("Bet")
-            else:
-                self.betRaiseButton.setText("Raise")
+            current_player = self.game.next[-1]  # Get the current player
 
-            if self.game.next[-1].bet == self.game.max_bet:
-                self.checkCallButton.setText("Check")
-                self.foldButton.setEnabled(False)
-            else:
-                self.checkCallButton.setText("Call")
+            if current_player == self.human_player:  # Compare with the stored human player
+                # Enable buttons for the human player
                 self.foldButton.setEnabled(True)
+                self.checkCallButton.setEnabled(True)
+                self.betRaiseButton.setEnabled(True)
 
-            # Assuming betSizeSlider is your QSlider object
-            minbet = self.game.get_legal_betsize()
-            maxbet = self.game.next[-1].stack + self.game.next[-1].bet
-            if minbet is not None:
-                self.raiseAmountLineEdit.setText(str(minbet))
-                self.betSizeSlider.setMinimum(minbet)
-                self.betSizeSlider.setMaximum(maxbet)
-                self.betSizeSlider.setValue(minbet)
+                # Update button text
+                if self.game.max_bet == 0:
+                    self.betRaiseButton.setText("Bet")
+                else:
+                    self.betRaiseButton.setText("Raise")
+
+                if self.game.next[-1].bet == self.game.max_bet:
+                    self.checkCallButton.setText("Check")
+                    self.foldButton.setEnabled(False)
+                else:
+                    self.checkCallButton.setText("Call")
+                    self.foldButton.setEnabled(True)
+
+                # Update slider for betting
+                minbet = self.game.get_legal_betsize()
+                maxbet = self.game.next[-1].stack + self.game.next[-1].bet
+                if minbet is not None:
+                    self.raiseAmountLineEdit.setText(str(minbet))
+                    self.betSizeSlider.setMinimum(minbet)
+                    self.betSizeSlider.setMaximum(maxbet)
+                    self.betSizeSlider.setValue(minbet)
+            else:
+                # Disable buttons when it's not the human player's turn
+                self.foldButton.setEnabled(False)
+                self.checkCallButton.setEnabled(False)
+                self.betRaiseButton.setEnabled(False)
+
+    def process_turn(self):
+        if self.game.finished:  # Stop if the hand is over
+            return
+
+        for agent in self.ai_agents.values():
+            state = agent.encode_state(game)
+            agent.episodes[-1].add_observation(state)
+            agent.add_to_sequence(state)
+        current_player = self.game.acting_player
+        if current_player == self.human_player:
+            # It's the human player's turn - enable buttons
+            self._set_buttons()
+        else:
+            # It's an AI player's turn - decide and execute an action
+            self.process_ai_turn(current_player)
+
+    def process_ai_turn(self, player):
+        # Example AI logic
+        action, betsize, *_ = self.ai_agents[player].get_action(game=game)
+        if action == 0:
+            QTimer.singleShot(1000,self.fold)
+        elif action == 1:
+            QTimer.singleShot(1000,self.call)
+        else:
+            QTimer.singleShot(1000, lambda: self.raiseBet(betsize))
+    def update_ui_after_action(self, update_pot=False):
+        # Update pot, chip counts, and bets
+        if update_pot:
+            self.potLabel.setText("Pot: " + str(self.game.pot))
+        for i, player in enumerate(self.game.players):
+            chipcount_label = self.player_elements[i]["widget"].findChild(QLabel, f"chipcountPlayer_{i}")
+            chipcount_label.setText(str(player.stack))
+            if not self.game.finished:
+                bet_label = self.player_elements[i]["bet"]
+                bet_label.setText(str(player.bet))
+                bet_label.setVisible(player.bet > 0)
+
+    def distribute_pot(self):
+        for i in range(n_players):
+            current_stack = float(self.player_elements[i]["widget"].findChild(QLabel, f"chipcountPlayer_{i}").text())
+            pot = self.game.players[i].stack - current_stack
+            if pot >0:
+                bet_label = self.player_elements[i]["bet"]
+                bet_label.setText(str("Pot: " + str(self.game.pot)))
+                bet_label.setVisible(True)
+                self.potLabel.setVisible(False)
+            self.counts[i] += self.game.players[i].stack - self.game.players[i].starting_stack
+        self.scores.clear()
+        for player, score in zip(self.names, self.counts):
+            self.scores.addItem(f"{player}: {score}")
 
 
     def check_end_of_round(self, street=None):
         if self.game.finished:
+            self.potLabel.setText("Pot: " + str(self.game.pot))
+            for i in range(n_players):
+                self.player_elements[i]["bet"].setText("")
+                mainWin.showCards(i)
             # check if there are cards to be dealt.
             if len(self.game.board) == 5:
-                print("showdown")
                 # Queue the UI updates for dealing cards with delays in between
                 if street == 0 or street is None:  # If street is None, deal all streets
                     QTimer.singleShot(1000, lambda: self.deal_board(0))  # Deal flop after 1 sec
@@ -341,23 +449,20 @@ class PokerWindow(QMainWindow, Ui_MainWindow):
                 elif street == 2:
                     QTimer.singleShot(1000, lambda: self.deal_board(2))  # Deal river after 1 sec
 
-            wait_till_chip_update = 4000 - street * 1000 if street is not None else 1000
+            wait_till_pot = 4000 - street * 1000 if street is not None else 1000
                 # Queue the chip count updates to occur after the last card is dealt
-            QTimer.singleShot(wait_till_chip_update, self.update_chip_counts)  # Update chip counts after all cards are dealt
-            wait_till_new_hand = 6000 - street * 1000 if street is not None else 1000
-            #QTimer.singleShot(wait_till_new_hand, self.deal_new_hand)
+            # move pot to winner
+            QTimer.singleShot(wait_till_pot, self.distribute_pot)
+
+            wait_till_new_hand = 6000 - street * 1000 if street is not None else 2000
+            QTimer.singleShot(wait_till_new_hand, self.deal_new_hand)
             self.buttonNextHand.setVisible(True)
-
-
 
     def update_chip_counts(self):
         # This function will update the chip counts after the board has been fully dealt
         for i in range(self.game.n_players):  # Assuming 'n_players' is defined
             chipcount_label = self.player_elements[i]["widget"].findChild(QLabel, f"chipcountPlayer_{i}")
             chipcount_label.setText(str(self.game.players[i].stack))
-            self.player_elements[i]["bet"].setText(str(0))
-            self.player_elements[i]["bet"].setVisible(False)
-
 
 
     def deal_new_hand(self):
@@ -370,7 +475,10 @@ class PokerWindow(QMainWindow, Ui_MainWindow):
             else:
                 self.player_elements[i]["button"].setVisible(True)
         for i in range(n_players):
-            self.showCards(i)
+            if i == 0:
+                self.showCards(i)
+            else:
+                self.showBackside(i)
             chipcount_label = self.player_elements[i]["widget"].findChild(QLabel, f"chipcountPlayer_{i}")
             chipcount_label.setText(str(self.game.players[i].stack))
             bet = self.game.players[i].bet
@@ -382,20 +490,41 @@ class PokerWindow(QMainWindow, Ui_MainWindow):
         self.flop_2.clear()
         self.turn.clear()
         self.river.clear()
-        self.potLabel.setText("Pot: " + str(self.game.pot))
+        self.potLabel.setText("Pot: ")
         self.potLabel.setVisible(True)
         mainWin._set_buttons()
         mainWin.buttonNextHand.setVisible(False)
+        for agent in self.ai_agents.values():
+            agent.policy.reset()
+        self.process_turn()
 
 
 
 def init_game(game, mainWin):
     game.new_hand(first_hand=True, random_seat=True)
+    mainWin.names = [mainWin.labelPlayerName_0.text()]
+    for i in range(1, n_players):
+        mainWin.names.append("AI " + str(i))
+    mainWin.counts = [0 for name in mainWin.names]
 
     # seat players according to order in game-instance. Player_0 always sits in the first seat because hero
     index_hero = game.positions.index(game.players[0])
+    ai_players = [player for player in game.players if player != game.players[0]]
+    policies = [MixedGruPolicy(
+        input_size=119,
+        hidden_size=256,
+        num_gru_layers=1,
+        linear_layers=(256,128),
+    ) for player in ai_players]
+    paths = [f"../policies/saved_models/policy_0.pt" for i in range(len(policies))]
+    mainWin.ai_agents = {player: Agent(player, policy, path) for policy, path, player in zip(policies, paths, ai_players)}
+    mainWin.human_player = game.players[0]
     positions = [game.positions.index(game.players[i]) for i in range(n_players)]
     indices_next = [game.players.index(game.next[i]) for i in range(n_players)]
+    mainWin.scores.clear()  # Clear existing items
+    for player, score in zip(mainWin.names, mainWin.counts):
+        mainWin.scores.addItem(f"{player}: {score}")
+
     print(positions)
     print(indices_next)
     for i in range(n_players):
@@ -412,7 +541,10 @@ def init_game(game, mainWin):
         if i != index_button:
             mainWin.player_elements[i]["button"].setVisible(False)
     for i in range(n_players):
-        mainWin.showCards(i)
+        if i == 0:
+            mainWin.showCards(i)
+        else:
+            mainWin.showBackside(i)
         chipcount_label = mainWin.player_elements[i]["widget"].findChild(QLabel, f"chipcountPlayer_{i}")
         chipcount_label.setText(str(game.players[i].stack))
         bet = game.players[i].bet
@@ -438,6 +570,7 @@ if __name__ == "__main__":
 
         init_game(game, mainWin)
         mainWin.show()
+        mainWin.process_turn()
     app.exec_()
 
 

@@ -100,7 +100,7 @@ def check_flush(hand):
             hearts.append(card[0])
         elif card[1] == 2:
             clubs.append(card[0])
-        else:
+        elif card[1] == 3:
             diamonds.append(card[0])
 
     if len(spades) >= 5:

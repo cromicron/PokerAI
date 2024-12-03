@@ -71,8 +71,10 @@ class Game:
         self.pot = 0
         if hand_history:
             self.hand_history = HandHistory(save = save_hand_history)
+        self.last_action = None
 
     def new_hand(self, random_seat=False, first_hand = False, reset_to_starting = True):
+        self.last_action = None
         if hasattr(self, "hand_history"):
             self.hand_history.clear_hand_history()
         if random_seat:
@@ -230,8 +232,13 @@ class Game:
             return min(minbet, player.stack+player.bet)
 
 
+    @property
+    def acting_player(self):
+        return self.next[-1]
+
 
     def implement_action(self, player, action, amount=None):
+        self.last_action = {"player": player, "action": action, "amount": amount}
         if player != self.next[-1]:
             raise ValueError("It's not the chosen player's turn to act")
 
@@ -384,7 +391,7 @@ class Game:
                         else:
                             self.board.append(self.deck[2*self.n_players +self.street+1])
                             if hasattr(self, "hand_history"):
-                                self.hand_history.record_street_cards(2, self.board[-1].representation)
+                                self.hand_history.record_street_cards(self.street, self.board[-1].representation)
                         self.next = collections.deque(self.left_in_hand)
                         if self.n_players != 2:
                             self.next.reverse()
