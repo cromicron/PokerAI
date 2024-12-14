@@ -1,13 +1,13 @@
 from modules.gru_module import GRUModule
-import torch
 from torch import nn
-from torch.distributions import Distribution, Categorical, Beta
 import matplotlib.pyplot as plt
-import numpy as np
 import torch
 import torch.nn.functional as F
-from torch.distributions import Beta, Categorical
+from torch.distributions import Distribution, Beta, Categorical
 
+import torch
+import torch.nn.functional as F
+from torch.distributions import Distribution, Beta, Categorical
 class UnifiedDistribution(torch.distributions.Distribution):
     def __init__(
             self,
@@ -16,8 +16,6 @@ class UnifiedDistribution(torch.distributions.Distribution):
             beta_betas,
             beta_logits,
             categorical_mask=None,
-            clamp_min=-6.0,
-            clamp_max=6.0
     ):
         """
         A unified distribution for both discrete actions and continuous betting, using Beta distributions.
@@ -36,18 +34,11 @@ class UnifiedDistribution(torch.distributions.Distribution):
         mask_value = torch.tensor(
             torch.finfo(category_logits.dtype).min, dtype=category_logits.dtype
         )
-        masked_logits = torch.where(categorical_mask, category_logits, mask_value)
-
-        # Step 3: Clamp only valid logits
-        self.category_logits = torch.where(
-            categorical_mask,
-            torch.clamp(masked_logits, min=clamp_min, max=clamp_max),
-            mask_value
-        )
+        self.category_logits = torch.where(categorical_mask, category_logits, mask_value)
 
         self.beta_alphas = beta_alphas
         self.beta_betas = beta_betas
-        self.beta_logits = torch.clamp(beta_logits, min=clamp_min, max=clamp_max)
+        self.beta_logits = beta_logits
 
         # Create Beta mixture components
         self.beta_components = Beta(self.beta_alphas, self.beta_betas)
@@ -221,6 +212,13 @@ class MixedGRUModule(nn.Module):
 
         # GRU Layer
         self.gru = GRUModule(input_size, hidden_size, num_gru_layers, linear_layers, activation, output_dim=None)
+        for name, param in self.gru.named_parameters():
+            if 'weight' in name:
+                # Apply Xavier (Glorot) Uniform Initialization to all weight matrices
+                torch.nn.init.xavier_uniform_(param)
+            elif 'bias' in name:
+                # Initialize biases to zero (optional, can be constant or other strategies too)
+                torch.nn.init.zeros_(param)
         current_input_size = linear_layers[-1]
         categories = 3 if single_raise else 5
 

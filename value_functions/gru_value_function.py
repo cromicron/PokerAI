@@ -30,14 +30,14 @@ class PokerDataset(Dataset):
         with torch.no_grad():  # No gradients needed during dataset creation
             predictions, _ = value_function(self.observations, return_sequences=True)  # (batch_size, max_steps, 1)
             predictions = predictions.squeeze(-1)  # Remove last dim, shape now: (batch_size, max_steps)
-        assert value_function.output_dim in (1,3), "value function output must be 1 for value function and 3 for q"
+        assert value_function.output_dim in (1,2), "value function output must be 1 for value function and 2 for q"
         if value_function.output_dim == 1:
             self.targets = torch.roll(predictions, shifts=-1, dims=1)  # Shift targets for next-step prediction
             for i in range(rewards.size(0)):
                 # Identify the last valid timestep using the sequence mask
                 last_valid_idx = mask[i].nonzero()[-1].item()
                 self.targets[i, last_valid_idx] = rewards[i]
-        elif value_function.output_dim ==3:
+        elif value_function.output_dim ==2:
             assert action_categories is not None, "you must provide actions for q-function"
             assert probs is not None, "you must provide probabilities for actions for q-function"
             assert action_masks is not None, "you must provide action masks for actions for q-function"
@@ -46,6 +46,12 @@ class PokerDataset(Dataset):
             probs = probs.to(device)
             rewards = rewards.to(device)
             # values are the average of the next state, when an action is taken
+            # true values for folds can be caluclated by stack-starting_stack + blind
+            blind = observations[:, 0, value_function.idx_bet]
+            starting_stack = observations[..., value_function.idx_stack_start]
+            current_stack = observations[..., value_function.idx_stack_now]
+            q_fold = (current_stack - starting_stack + blind.unsqueeze(-1)).unsqueeze(-1)
+            predictions = torch.cat([q_fold.to(device), predictions], dim=-1)
             values = (predictions * probs).sum(dim=-1)
             n, m = values.size()
             last_actions = torch.where(action_masks, torch.arange(m, device=device), -1).max(dim=1).values
@@ -69,12 +75,8 @@ class PokerDataset(Dataset):
             rows, cols = torch.where(action_masks)
             predictions[rows, cols, action_categories[rows, cols]] = result[rows, cols]
 
-            # true values for folds can be caluclated by stack-starting_stack + blind
-            blind = observations[:, 0, value_function.idx_bet]
-            starting_stack = observations[..., value_function.idx_stack_start]
-            current_stack = observations[..., value_function.idx_stack_now]
-            predictions[..., 0] = current_stack - starting_stack + blind.unsqueeze(-1)
-            self.targets = predictions
+
+            self.targets = predictions[..., 1:]
             self.mask = action_masks
 
 
@@ -97,7 +99,7 @@ class GRUValueFunction(GRUModule):
             num_gru_layers,
             linear_layers,
             activation=nn.LeakyReLU,
-            output_dim=3,
+            output_dim=2,
             output_activation=None,
             idx_stack_start=103,
             idx_stack_now=94,
@@ -131,6 +133,7 @@ class GRUValueFunction(GRUModule):
             actions=None,
             probs=None,
             action_masks=None,
+            verbose=True,
     ):
         """
         Trains the value function using predicted values of the next step as targets.
@@ -170,10 +173,9 @@ class GRUValueFunction(GRUModule):
                 predictions, _ = self(batch_observations, return_sequences=True) # (batch_size, max_steps)
 
 
-
                 # Compute loss with masking
                 raw_loss = loss_fn(predictions.squeeze(), batch_targets)
-                if raw_loss.size(-1) == 3:
+                if raw_loss.size(-1) == 2:
                     raw_loss = raw_loss.max(dim=-1).values# (batch_size, max_steps)
                 masked_loss = raw_loss * batch_mask.float()  # Apply mask to ignore invalid timesteps
                 loss = masked_loss.sum() / batch_mask.sum()
@@ -184,8 +186,8 @@ class GRUValueFunction(GRUModule):
 
                 epoch_loss += loss.item()
                 num_batches += 1
-
-            print(f"Epoch {epoch + 1}/{epochs}, Avg Loss: {epoch_loss / num_batches:.4f}")
+            if verbose:
+                print(f"Epoch {epoch + 1}/{epochs}, Avg Loss: {epoch_loss / num_batches:.4f}")
         torch.cuda.empty_cache()
         self.to("cpu")
         self.eval()

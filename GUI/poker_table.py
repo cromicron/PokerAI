@@ -780,6 +780,48 @@ class Ui_MainWindow(object):
         font3 = QFont()
         font3.setPointSize(10)
         self.scores.setFont(font3)
+        self.hud = QWidget(self.centralwidget)
+        self.hud.setObjectName(u"hud")
+        self.hud.setGeometry(QRect(600, 440, 191, 71))
+        self.hud.setFont(font3)
+        self.hud.setLayoutDirection(Qt.LeftToRight)
+        self.gridLayout = QGridLayout(self.hud)
+        self.gridLayout.setObjectName(u"gridLayout")
+        self.q_call = QLabel(self.hud)
+        self.q_call.setObjectName(u"q_call")
+        self.q_call.setLayoutDirection(Qt.LeftToRight)
+        self.q_call.setAlignment(Qt.AlignCenter)
+
+        self.gridLayout.addWidget(self.q_call, 0, 3, 1, 1)
+
+        self.p_fold = QLabel(self.hud)
+        self.p_fold.setObjectName(u"p_fold")
+        self.p_fold.setAlignment(Qt.AlignCenter)
+
+        self.gridLayout.addWidget(self.p_fold, 1, 2, 1, 1)
+
+        self.p_bet = QLabel(self.hud)
+        self.p_bet.setObjectName(u"p_bet")
+        self.p_bet.setAlignment(Qt.AlignCenter)
+
+        self.gridLayout.addWidget(self.p_bet, 1, 4, 1, 1)
+
+        self.p_call = QLabel(self.hud)
+        self.p_call.setObjectName(u"p_call")
+        self.p_call.setAlignment(Qt.AlignCenter)
+
+        self.gridLayout.addWidget(self.p_call, 1, 3, 1, 1)
+
+        self.q_bet = QLabel(self.hud)
+        self.q_bet.setObjectName(u"q_bet")
+        self.q_bet.setAlignment(Qt.AlignCenter)
+
+        self.gridLayout.addWidget(self.q_bet, 0, 4, 1, 1)
+
+        self.hideHud = QCheckBox(self.centralwidget)
+        self.hideHud.setObjectName(u"hideHud")
+        self.hideHud.setGeometry(QRect(630, 420, 51, 21))
+        self.hideHud.setChecked(True)
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QMenuBar(MainWindow)
         self.menubar.setObjectName(u"menubar")
@@ -870,5 +912,11 @@ class Ui_MainWindow(object):
         self.check_6.setText(QCoreApplication.translate("MainWindow", u"Check!", None))
         self.check_7.setText(QCoreApplication.translate("MainWindow", u"Check!", None))
         self.check_8.setText(QCoreApplication.translate("MainWindow", u"Check!", None))
+        self.q_call.setText(QCoreApplication.translate("MainWindow", u"7", None))
+        self.p_fold.setText(QCoreApplication.translate("MainWindow", u"0.9", None))
+        self.p_bet.setText(QCoreApplication.translate("MainWindow", u"0.05", None))
+        self.p_call.setText(QCoreApplication.translate("MainWindow", u"0.05", None))
+        self.q_bet.setText(QCoreApplication.translate("MainWindow", u"6", None))
+        self.hideHud.setText(QCoreApplication.translate("MainWindow", u"show hud", None))
     # retranslateUi
 

@@ -7,7 +7,11 @@ from PySide2.QtCore import Qt, QTimer
 from PokerGame.NLHoldem import Game, value_dict, suit_dict
 from agents.gru_agent import Agent
 from policies.mixed_gru_policy import MixedGruPolicy
-import random
+from value_functions.gru_value_function import GRUValueFunction
+from encoders.state_encoder import encode_state
+from encoders.strength_encoder import encode_strength
+import numpy as np
+import torch
 
 class GameSetupDialog(QDialog):
     def __init__(self, parent=None):
@@ -85,18 +89,21 @@ class PokerWindow(QMainWindow, Ui_MainWindow):
 
 
         self.player_elements = {
-            0: {"widget": self.player0, 'cards': [self.holecardP00, self.holecardP01], "button": self.button0, "bet": self.bet_0, "check": self.check_0},
-            1: {"widget": self.player1, 'cards': [self.holecardP10, self.holecardP11], "button": self.button1, "bet": self.bet_1, "check": self.check_1},
-            2: {"widget": self.player2, 'cards': [self.holecardP20, self.holecardP21], "button": self.button2, "bet": self.bet_2, "check": self.check_2},
-            3: {"widget": self.player3, 'cards': [self.holecardP30, self.holecardP31], "button": self.button3, "bet": self.bet_3, "check": self.check_3},
-            4: {"widget": self.player4, 'cards': [self.holecardP40, self.holecardP41], "button": self.button4, "bet": self.bet_4, "check": self.check_4},
-            5: {"widget": self.player5, 'cards': [self.holecardP50, self.holecardP51], "button": self.button5, "bet": self.bet_5, "check": self.check_5},
-            6: {"widget": self.player6, 'cards': [self.holecardP60, self.holecardP61], "button": self.button6, "bet": self.bet_6, "check": self.check_6},
-            7: {"widget": self.player7, 'cards': [self.holecardP70, self.holecardP71], "button": self.button7, "bet": self.bet_7, "check": self.check_7},
-            8: {"widget": self.player8, 'cards': [self.holecardP80, self.holecardP81], "button": self.button8, "bet": self.bet_8, "check": self.check_8},
+            0: {"widget": self.player0, 'cards': [self.holecardP00, self.holecardP01], "button": self.button0, "bet": self.bet_0, "action_label": self.check_0},
+            1: {"widget": self.player1, 'cards': [self.holecardP10, self.holecardP11], "button": self.button1, "bet": self.bet_1, "action_label": self.check_1},
+            2: {"widget": self.player2, 'cards': [self.holecardP20, self.holecardP21], "button": self.button2, "bet": self.bet_2, "action_label": self.check_2},
+            3: {"widget": self.player3, 'cards': [self.holecardP30, self.holecardP31], "button": self.button3, "bet": self.bet_3, "action_label": self.check_3},
+            4: {"widget": self.player4, 'cards': [self.holecardP40, self.holecardP41], "button": self.button4, "bet": self.bet_4, "action_label": self.check_4},
+            5: {"widget": self.player5, 'cards': [self.holecardP50, self.holecardP51], "button": self.button5, "bet": self.bet_5, "action_label": self.check_5},
+            6: {"widget": self.player6, 'cards': [self.holecardP60, self.holecardP61], "button": self.button6, "bet": self.bet_6, "action_label": self.check_6},
+            7: {"widget": self.player7, 'cards': [self.holecardP70, self.holecardP71], "button": self.button7, "bet": self.bet_7, "action_label": self.check_7},
+            8: {"widget": self.player8, 'cards': [self.holecardP80, self.holecardP81], "button": self.button8, "bet": self.bet_8, "action_label": self.check_8},
         }
 
         self._adjustTableForLessPlayers(n_players)
+
+        self.hideHud.stateChanged.connect(self.toggle_hud)  # No need for findChild!
+
 
         # generate dict for all geometries
         self.geometries = {i: {} for i in range(n_players)}
@@ -110,6 +117,9 @@ class PokerWindow(QMainWindow, Ui_MainWindow):
                     for j in range(len(value)):
                         self.geometries[i][key].append(copy.deepcopy(value[j].geometry()))
 
+    def toggle_hud(self, state):
+        """Enable or disable the grid based on checkbox state."""
+        self.hud.setVisible(state == 2)  # 2 means checked
 
     def onRaiseAmountEdited(self, text):
         # Convert text to a float value and update the slider's position
@@ -225,11 +235,18 @@ class PokerWindow(QMainWindow, Ui_MainWindow):
         self.player_elements[player]["cards"][0].setVisible(False)
         self.player_elements[player]["cards"][1].setVisible(False)
 
-    # Define your slot functions here
+
     def fold(self):
         current_street = self.game.street
         # handle fold action
         index_next = self.game.players.index(self.game.acting_player)
+        # Core logic for Call/Check
+
+        action_text = "fold"
+        self.player_elements[index_next]["action_label"].setText(action_text)
+        self.player_elements[index_next]["action_label"].show()
+        QTimer.singleShot(500, self.player_elements[index_next]["action_label"].hide)
+
         self.muckCards(index_next)
         game.implement_action(self.game.acting_player, 0)
         if self.game.street > current_street and not self.game.finished:
@@ -247,25 +264,25 @@ class PokerWindow(QMainWindow, Ui_MainWindow):
         player = self.game.acting_player  # Get the current player
         index_next = self.game.players.index(player)  # Get the player's index
 
-        call_amount = self.game.max_bet - player.bet
-
         # Core logic for Call/Check
-        if self.game.max_bet == 0:  # Check condition
+        if self.game.acting_player.bet == self.game.max_bet:  # Check condition
+            action_text = "check"
+        else:
+            action_text = "call"
+            #get betsize
+            bet_label = self.player_elements[index_next]["bet"]
+            betsize = min(self.game.max_bet, player.starting_stack)
+            bet_label.setText(str(betsize))
+            bet_label.setVisible(betsize > 0)
+            chipcount_label = self.player_elements[index_next]["widget"].findChild(QLabel, f"chipcountPlayer_{index_next}")
+            chipcount_label.setText(str(player.starting_stack-betsize))
+        self.player_elements[index_next]["action_label"].setText(action_text)
+        self.player_elements[index_next]["action_label"].show()
+        QTimer.singleShot(500, self.player_elements[index_next]["action_label"].hide)
 
-            self.player_elements[index_next]["check"].show()
-            QTimer.singleShot(500, self.player_elements[index_next]["check"].hide)
 
         self.game.implement_action(player, 1)  # Perform the Call/Check action
 
-        # Update bet label
-        bet_label = self.player_elements[index_next]["bet"]
-        bet_label.setText(str(player.bet))
-        bet_label.setVisible(player.bet > 0)
-
-        # Update chip count
-        if not self.game.finished:
-            chipcount_label = self.player_elements[index_next]["widget"].findChild(QLabel, f"chipcountPlayer_{index_next}")
-            chipcount_label.setText(str(player.stack))
 
         # Handle street progression (if applicable)
         if self.game.street > current_street and not self.game.finished:
@@ -281,7 +298,8 @@ class PokerWindow(QMainWindow, Ui_MainWindow):
             self._set_buttons()  # Update button states for the human player
 
         # Handle round progression
-        self.check_end_of_round(current_street)
+        if self.game.finished:
+            QTimer.singleShot(500, lambda: self.check_end_of_round(current_street))
         if not mainWin.game.finished:
             self.update_ui_after_action(update_pot)
         # Proceed to the next turn
@@ -290,6 +308,15 @@ class PokerWindow(QMainWindow, Ui_MainWindow):
     def raiseBet(self, raise_amount=None):
         player = self.game.acting_player  # Get the current player
         index_next = self.game.players.index(player)  # Get the player's index
+
+        # Core logic for Call/Check
+        if self.game.max_bet == 0:  # Check condition
+            action_text = "bet"
+        else:
+            action_text = "raise"
+        self.player_elements[index_next]["action_label"].setText(action_text)
+        self.player_elements[index_next]["action_label"].show()
+        QTimer.singleShot(500, self.player_elements[index_next]["action_label"].hide)
 
         # Determine raise amount
         if not raise_amount:  # Human player: Use the GUI's input
@@ -335,7 +362,7 @@ class PokerWindow(QMainWindow, Ui_MainWindow):
         elif street == 1:
             mainWin.setCardImage(self.turn, self.game.board[3])
 
-        else:
+        elif street == 2:
             mainWin.setCardImage(self.river, self.game.board[4])
 
 
@@ -386,7 +413,23 @@ class PokerWindow(QMainWindow, Ui_MainWindow):
             agent.add_to_sequence(state)
         current_player = self.game.acting_player
         if current_player == self.human_player:
-            # It's the human player's turn - enable buttons
+            # It's the human player's turn - enable buttons and estimate values
+            agent = self.ai_agents[current_player]
+            sequence = agent.policy.create_sequence()
+            legal_actions = list(self.game.get_legal_actions())
+            valid_action_mask = torch.zeros(3, dtype=torch.bool)  # Initialize as all False
+            valid_action_mask[legal_actions] = True
+            valid_action_mask = valid_action_mask.reshape(1, 1, -1)
+            with torch.no_grad():
+                dist, _ = agent.policy(sequence, legal_actions_mask=valid_action_mask)
+            probs = dist.category_probs[-1, -1, :].tolist()
+            qs = sequence[-1, -1, -2:].tolist()
+            self.p_fold.setText(str(round(probs[0], 4)))
+            self.p_call.setText(str(round(probs[1], 4)))
+            self.p_bet.setText(str(round(probs[2], 4)))
+            self.q_call.setText(str(round(qs[0], 4)))
+            self.q_bet.setText(str(round(qs[1], 4)))
+            agent.policy.sequence_buffer = []
             self._set_buttons()
         else:
             # It's an AI player's turn - decide and execute an action
@@ -419,7 +462,7 @@ class PokerWindow(QMainWindow, Ui_MainWindow):
             pot = self.game.players[i].stack - current_stack
             if pot >0:
                 bet_label = self.player_elements[i]["bet"]
-                bet_label.setText(str("Pot: " + str(self.game.pot)))
+                bet_label.setText(str("Pot: " + str(pot)))
                 bet_label.setVisible(True)
                 self.potLabel.setVisible(False)
             self.counts[i] += self.game.players[i].stack - self.game.players[i].starting_stack
@@ -509,15 +552,42 @@ def init_game(game, mainWin):
 
     # seat players according to order in game-instance. Player_0 always sits in the first seat because hero
     index_hero = game.positions.index(game.players[0])
-    ai_players = [player for player in game.players if player != game.players[0]]
-    policies = [MixedGruPolicy(
-        input_size=119,
-        hidden_size=256,
-        num_gru_layers=1,
-        linear_layers=(256,128),
-    ) for player in ai_players]
-    paths = [f"../policies/saved_models/policy_0.pt" for i in range(len(policies))]
-    mainWin.ai_agents = {player: Agent(player, policy, path) for policy, path, player in zip(policies, paths, ai_players)}
+    dummy_player = game.players[0]
+    dummy_state = encode_state(game, dummy_player)
+    dummy_cards = dummy_player.holecards
+    dummy_strength = encode_strength(dummy_cards)
+    state_vector_value =  np.hstack([dummy_state, dummy_strength])
+    state_vector_value = state_vector_value.shape[0]
+    value_functions = [
+        GRUValueFunction(
+            input_size=state_vector_value,
+            hidden_size=256,
+            num_gru_layers=1,
+            linear_layers=(256, 128),
+        ) for _ in range(len(game.players))
+    ]
+    policies = [
+        MixedGruPolicy(
+            input_size=state_vector_value + 2,
+            hidden_size=256,
+            num_gru_layers=1,
+            linear_layers=(256, 128),
+            value_function=v,
+        ) for v in value_functions
+    ]
+    policy_paths = [f"../policies/saved_models/policy_1.pt" for _ in range(len(policies))]
+    value_paths = [f"../value_functions/saved_models/model_1.pt" for _ in range(len(policies))]
+    mainWin.ai_agents = {
+        player: Agent(
+            player,
+            policy,
+            value_function,
+            True,
+            policy_path=policy_path,
+            value_path=value_path,
+        ) for player, policy, value_function, policy_path, value_path in zip(
+            game.players, policies, value_functions, policy_paths, value_paths
+        )}
     mainWin.human_player = game.players[0]
     positions = [game.positions.index(game.players[i]) for i in range(n_players)]
     indices_next = [game.players.index(game.next[i]) for i in range(n_players)]
@@ -550,7 +620,7 @@ def init_game(game, mainWin):
         bet = game.players[i].bet
         if bet > 0:
             mainWin.player_elements[i]["bet"].setText(str(game.players[i].bet))
-        mainWin.player_elements[i]["check"].setVisible(False)
+        mainWin.player_elements[i]["action_label"].setVisible(False)
     mainWin._set_buttons()
     mainWin.buttonNextHand.setVisible(False)
 

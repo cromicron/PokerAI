@@ -317,8 +317,6 @@ class Game:
             player.stack -= amount - player.bet
             player.bet = copy.copy(amount)
             self.added = player.bet - self.max_bet
-            if self.added <0:
-                print("here")
             self.max_bet = copy.copy(player.bet)
             #remove from roundabout if no chips left
             if player.stack == 0:

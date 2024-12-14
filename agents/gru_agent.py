@@ -23,11 +23,31 @@ class Episode:
 
 
 class Agent:
-    def __init__(self, player, policy, policy_path=None):
+    def __init__(
+            self,
+            player,
+            policy,
+            value_function,
+            encode_value=False,
+            idx_stack_start=103,
+            idx_stack_now=94,
+            idx_bet=95,
+            policy_path=None,
+            value_path=None
+
+    ):
         self.player = player
         self.policy = policy
+        if encode_value:
+            assert value_function is not None, "you must provide a value function if you want to encode value"
+            self.idx_stack_start=idx_stack_start,
+            self.idx_stack_now=idx_stack_now,
+            self.idx_bet=idx_bet,
+        self.value_function = value_function
         if policy_path:
             self.policy.load_state_dict(torch.load(policy_path))
+        if value_path:
+            self.value_function.load_state_dict(torch.load(value_path))
         self.episodes = []
         self.create_episode()
 
