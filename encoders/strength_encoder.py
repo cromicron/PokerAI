@@ -1,10 +1,22 @@
+import torch
+
 from PokerGame.NLHoldem import Game, Player
 from PokerGame.HandComperator import strength as evaluate_strength
 from encoders.state_encoder import encode_state
-import numpy as np
 from operator import attrgetter
+import numpy as np
 
-def encode_strength(holecards, board = None):
+
+
+
+
+
+
+
+
+
+
+def encode_strength(holecards, board = None, improved=False):
     type = np.zeros(8)
     holecards_sorted = sorted(holecards, key=attrgetter("value", "suit"), reverse=True)
     if board is None or len(board) == 0:
@@ -48,7 +60,7 @@ def encode_strength(holecards, board = None):
             board_cards_list += [(-23, -177), (-11, -76)]
             strength_board = evaluate_strength(board_cards_list)
 
-        # check flush-draw
+        # check flush and straight draw
         if len(board) < 5:
             suits = [card.suit for card in board]
             if holecards[0].suit == holecards[1].suit:

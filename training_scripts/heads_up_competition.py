@@ -13,7 +13,7 @@ from tqdm import tqdm
 import os
 from copy import deepcopy
 import ray
-
+from time import time
 
 torch.set_flush_denormal(True)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -71,6 +71,7 @@ class LeaguePlayer(Agent):
         torch.save(self.policy_optimizer.state_dict(), self._paths["policy_optimizer"])
         torch.save(self.value_function.state_dict(), self._paths["value_network"])
         torch.save(self.value_optimizer.state_dict(), self._paths["value_optimizer"])
+
 class Match:
     def __init__(self, player_1: LeaguePlayer, player_2: LeaguePlayer, max_games=400):
         self.n_games = 0
@@ -133,13 +134,31 @@ class Match:
         self.finished = True
         game.new_hand(first_hand=False)
 
+
 class Matchday:
     def __init__(self, pairings: list):
         self.pairings = pairings
 
-    def play_matchday(self):
-        for pairing in self.pairings:
-            pairing.play_match()
+    @staticmethod
+    @ray.remote
+    def _play_match_remote(pairing):
+        """Helper method to run play_match in parallel."""
+        pairing.play_match()
+        for player in pairing.players:
+            player.policy = None
+            player.value_function = None
+        return pairing
+
+    def play_matchday(self, remote=True):
+        if remote:
+            # Run matches in parallel using the helper method
+            match_futures = [self._play_match_remote.remote(pairing) for pairing in self.pairings]
+            return ray.get(match_futures)  # Wait for all matches to complete
+
+        else:
+            # Run matches sequentially
+            for pairing in self.pairings:
+                pairing.play_match()
 
 
 class League:
@@ -190,7 +209,7 @@ class League:
 
         self.schedule=schedule
 
-    def evolution(self):
+    def evolution(self, remote=True):
         """play longer league without training and establish worst player"""
         # save legacy
         new_path_policies = f"{self.path_evolution_policy}/{str(self.n_evolutions).zfill(3)}"
@@ -207,8 +226,7 @@ class League:
             gc.collect()
             agent.value_function.to("cpu")
         self.create_schedule(self.games_per_match_evolution)
-        for matchday in tqdm(self.schedule):
-            matchday.play_matchday()
+        self.play_season(remote)
         result =  sorted(self.players, key=lambda x: x.score, reverse=True)
         print(self.table)
         # replace policy, value_function, and optimizers of worst with best players
@@ -235,6 +253,28 @@ class League:
             agent.value_function.to("cpu")
         self.n_evolutions += 1
 
+    def play_season(self, remote=True):
+        """Play all matches in the season"""
+        if remote:
+            self._detach_optimizers()
+            # keep episodes and don't pass to remote
+            episodes = {player.name: [] for player in self.players}
+            player_dict = {player.name: player for player in self.players}
+        for matchday in tqdm(self.schedule):
+            results = matchday.play_matchday(remote)
+            if remote:
+                for match in results:
+                    for sim_player in match.players:
+                        name = sim_player.name
+                        episodes[name].extend(sim_player.episodes)
+                        player_dict[name].score = sim_player.score
+                        player_dict[name].n_games = sim_player.n_games
+        if remote:
+            for name, player in player_dict.items():
+                player.episodes = episodes[name]
+            self._attach_optimizers()
+
+
     @property
     def table(self):
         # Collect player data into a list of dictionaries
@@ -249,6 +289,18 @@ class League:
         # Create a pandas DataFrame
         return pd.DataFrame(data)
 
+    def _detach_optimizers(self):
+        """temporarily remove optimizers from players"""
+        self.optimizers = {}
+        for player in self.players:
+            self.optimizers[player] = (player.value_optimizer, player.policy_optimizer)
+            player.value_optimizer = None
+            player.policy_optimizer = None
+
+    def _attach_optimizers(self):
+        """temporarily remove optimizers from players"""
+        for player in self.players:
+            player.value_optimizer, player.policy_optimizer = self.optimizers[player]
 
 
 num_agents = 8
@@ -309,20 +361,23 @@ league = League([
 
     ) for i, (policy, value_function, load) in enumerate(zip(policies, value_functions, load_for_model))
 ], games_per_match=hands_per_round, n_evolutions=1)
-
+remote=False
 
 while True:
     for a_nr, agent in enumerate(league.players):
         agent.reset()
         gc.collect()
+        agent.policy.to("cpu")
         agent.value_function.to("cpu")
         check_hand_evals(agent, output_file=f"evaluations/hand_evaluations_{a_nr}.csv", new_game=game)
     if agent.n_games >= league.n_evolutions*league.games_till_evolution:
         print("Evolving Players")
         league.evolution()
     league.create_schedule()
-    for matchday in tqdm(league.schedule):
-        matchday.play_matchday()
+    now = time()
+    league.play_season(remote)
+    print(f"finished playing in {time() - now}")
+    remote=True
     print(league.table)
     for agent in league.players:
         agent.generate_training_data()
