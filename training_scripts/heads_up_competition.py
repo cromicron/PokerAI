@@ -17,6 +17,7 @@ from time import time
 
 torch.set_flush_denormal(True)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+os.environ["RAY_memory_usage_threshold"] = ".98"
 ray.init()
 
 class LeaguePlayer(Agent):
@@ -135,31 +136,26 @@ class Match:
         game.new_hand(first_hand=False)
 
 
+
+
 class Matchday:
     def __init__(self, pairings: list):
         self.pairings = pairings
 
-    @staticmethod
-    @ray.remote
-    def _play_match_remote(pairing):
-        """Helper method to run play_match in parallel."""
-        pairing.play_match()
-        for player in pairing.players:
+    def play_matchday(self):
+        for pairing in self.pairings:
+            pairing.play_match()
+
+
+@ray.remote
+def play_matchday_remote(matchday: Matchday):
+    matchday.play_matchday()
+    return matchday.pairings
+    for match in matchday.pairings:
+        for player in match.players:
             player.policy = None
             player.value_function = None
-        return pairing
-
-    def play_matchday(self, remote=True):
-        if remote:
-            # Run matches in parallel using the helper method
-            match_futures = [self._play_match_remote.remote(pairing) for pairing in self.pairings]
-            return ray.get(match_futures)  # Wait for all matches to complete
-
-        else:
-            # Run matches sequentially
-            for pairing in self.pairings:
-                pairing.play_match()
-
+    return matchday.pairings
 
 class League:
     def __init__(
@@ -249,6 +245,9 @@ class League:
             )
         for agent in self.players:
             agent.score = 0
+            if remote:
+                agent.n_games -= self.games_per_match * (len(self.players) -1)
+            agent.clear_episode_buffer()
             agent.policy.to("cpu")
             agent.value_function.to("cpu")
         self.n_evolutions += 1
@@ -258,22 +257,20 @@ class League:
         if remote:
             self._detach_optimizers()
             # keep episodes and don't pass to remote
-            episodes = {player.name: [] for player in self.players}
             player_dict = {player.name: player for player in self.players}
-        for matchday in tqdm(self.schedule):
-            results = matchday.play_matchday(remote)
-            if remote:
-                for match in results:
+            futures = [play_matchday_remote.remote(matchday) for matchday in self.schedule]
+            results = ray.get(futures)
+            for matchday in results:
+                for match in matchday:
                     for sim_player in match.players:
                         name = sim_player.name
-                        episodes[name].extend(sim_player.episodes)
-                        player_dict[name].score = sim_player.score
-                        player_dict[name].n_games = sim_player.n_games
-        if remote:
-            for name, player in player_dict.items():
-                player.episodes = episodes[name]
+                        player_dict[name].episodes.extend(sim_player.episodes)
+                        player_dict[name].score += match.result[sim_player]
+                        player_dict[name].n_games += match.n_games
             self._attach_optimizers()
-
+        else:
+            for matchday in tqdm(self.schedule):
+                 matchday.play_matchday()
 
     @property
     def table(self):
@@ -360,8 +357,7 @@ league = League([
         load=load,
 
     ) for i, (policy, value_function, load) in enumerate(zip(policies, value_functions, load_for_model))
-], games_per_match=hands_per_round, n_evolutions=1)
-remote=False
+], games_per_match=hands_per_round, n_evolutions=0)
 
 while True:
     for a_nr, agent in enumerate(league.players):
@@ -372,13 +368,14 @@ while True:
         check_hand_evals(agent, output_file=f"evaluations/hand_evaluations_{a_nr}.csv", new_game=game)
     if agent.n_games >= league.n_evolutions*league.games_till_evolution:
         print("Evolving Players")
-        league.evolution()
+        league.evolution(True)
+
     league.create_schedule()
     now = time()
-    league.play_season(remote)
+    league.play_season()
     print(f"finished playing in {time() - now}")
-    remote=True
     print(league.table)
+    remote=True
     for agent in league.players:
         agent.generate_training_data()
         agent.train_policy(epochs=3, batch_size=64, entropy_coef=entropy_coeff, clip_epsilon=0.05, verbose=False)
