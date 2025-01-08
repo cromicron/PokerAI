@@ -575,8 +575,8 @@ def init_game(game, mainWin):
             value_function=v,
         ) for v in value_functions
     ]
-    policy_paths = [f"../policies/saved_models/policy_1.pt" for _ in range(len(policies))]
-    value_paths = [f"../value_functions/saved_models/model_1.pt" for _ in range(len(policies))]
+    policy_paths = [f"../policies/saved_models/policy_6.pt" for _ in range(len(policies))]
+    value_paths = [f"../value_functions/saved_models/model_6.pt" for _ in range(len(policies))]
     mainWin.ai_agents = {
         player: Agent(
             player,
