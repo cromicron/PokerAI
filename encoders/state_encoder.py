@@ -4,6 +4,55 @@ from PokerGame.HandComperator import strength
 from typing import List
 import numpy as np
 
+def card_vs_flop_suits(flop, card, encoded_flop_color):
+    """encodes suit comparison of a card with flop"""
+    card_color = np.zeros(2)
+    if (encoded_flop_color == 1).all():  # one colored board 0 1 rainbow 1 0 hit
+        if card.suit == flop[0].suit:
+            card_color[0] = 1
+        else:
+            card_color[1] = 1
+    elif encoded_flop_color[-1] == 1:  # two colored
+        unique_suits, counts = np.unique([card.suit for card in flop], return_counts=True)
+        turn_suit_count = counts[unique_suits == card.suit]
+        if turn_suit_count.shape[0] == 0:
+            card_color[0] = 1
+        elif turn_suit_count == counts.max():
+            card_color[:] = 1
+        else:
+            card_color[1] = 1
+    else:  # rainbow 0 1 for continued rainbow and 1 0 for hit
+        if np.unique([card.suit for card in flop + [card]]).shape[0] == 4:
+            card_color[1] = 1
+        else:
+            card_color[0] = 1
+    return card_color
+
+def encode_board(board) -> np.array:
+    turn_color = np.zeros(2)
+    river_color = np.zeros(3)
+    if board is not None:
+        flop = encode_flop(board[:3])
+        if len(board) == 4:
+            turn = encode_card(board[-1])
+            turn_color = card_vs_flop_suits(board[:-1], board[-1], flop[-2:])
+            river = np.zeros(17)
+        elif len(board) == 5 :
+            turn = encode_card(board[-2])
+            river = encode_card(board[-1])
+            turn_color = card_vs_flop_suits(board[:-2], board[-2], flop[-2:])
+            # check if river and turn have same suit
+            river_color[2] = int(board[-1].suit == board[-2].suit)
+            # encode river vs flop suits
+            river_color[:-1] = card_vs_flop_suits(board[:-1], board[-1], flop[-2:])
+        else:
+            turn = np.zeros(17)
+            river = np.zeros(17)
+        boardcards = np.hstack([flop, turn, river])
+    else:
+        boardcards = np.zeros(65)
+    return np.hstack([boardcards, turn_color, river_color])
+
 def encode_state(game: Game, player:Player, n_players=None) -> np.array:
     street = np.zeros(4)
     street[game.street] = 1
@@ -26,22 +75,7 @@ def encode_state(game: Game, player:Player, n_players=None) -> np.array:
         last_action[idx_last + n_encode] = amount
 
     holecards = encode_holecards(player.holecards)
-    if game.street != 0:
-        board = game.board
-        flop = encode_flop(board[:3])
-        if game.street == 2:
-            turn = encode_card(board[-1])
-            river = np.zeros(17)
-        elif game.street == 3 :
-            turn = encode_card(board[-2])
-            river = encode_card(board[-1])
-        else:
-            turn = np.zeros(17)
-            river = np.zeros(17)
-        boardcards = np.hstack([flop, turn, river])
-    else:
-        boardcards = np.zeros(63)
-
+    board = encode_board(game.board)
     legal_actions_array = np.zeros(3)
     if player == game.acting_player:
         legal_actions = list(game.get_legal_actions())
@@ -50,7 +84,7 @@ def encode_state(game: Game, player:Player, n_players=None) -> np.array:
         position,
         street,
         holecards,
-        boardcards,
+        board,
         in_play,
         player.stack,
         player.bet,

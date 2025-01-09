@@ -24,6 +24,16 @@ def encode_flop(cards: List[Card]) -> np.array:
     suits = np.zeros(12)
     indices_suit = [cards_sorted[0].suit, 4+ cards_sorted[1].suit, 8+cards_sorted[2].suit]
     suits[indices_suit] = 1
+    # encode colors 01 rainbow 10 two same color 11 all same
+    colors = np.zeros(2)
+    n_suit_max = suits.reshape(3, 4).sum(axis=0).max()
+    if n_suit_max == 1: # rainbow
+        colors[0] = 1
+    elif n_suit_max == 2: # two suits same
+        colors[1] = 1
+    else: # all same suit
+        colors[:] = 1
+
     # first and second same
     trips = int(values.sum() == 1)
     pair = int(values.sum() == 2)
@@ -35,7 +45,9 @@ def encode_flop(cards: List[Card]) -> np.array:
         pass# middle and last equal value
     else:
         same_0 = same_1 = 0
-    return np.hstack([values, suits, trips, pair, same_0, same_1])
+
+
+    return np.hstack([values, suits, trips, pair, same_0, same_1, colors])
 
 def encode_card(card: Card) -> np.array:
     value = np.zeros(13)
