@@ -16,6 +16,11 @@ from PokerGame.HandComperator import strength as strength_old
 import pickle
 
 
+def log_ratio_loss(p, q, eps=1e-4):
+    # Add a small epsilon to prevent log(0)
+    loss = torch.abs(torch.log(p.clamp(min=eps)) -torch.clamp(q, min=np.log(eps))).sum(dim=-1)
+    return loss
+
 with open("../lookup/preflop_probs.pkl", "rb") as f:
     LOOKUP_PREFLOP = pickle.load(f)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -24,10 +29,14 @@ deck = [(rank, suit) for rank in range(2, 15) for suit in range(4)]
 card_to_int = {
     card: i for i, card in enumerate(deck)
 }
+
+in_to_card = {
+    i: card for i, card in enumerate(deck)
+}
 COMBO_INDICES_RIVER = np.array(list(combinations(range(45), 2)))
 N_SIM_TURN = 250
 COMBO_INDICES_TURN = np.stack([np.random.choice(range(46), 3, replace=False) for _ in range(N_SIM_TURN)])
-MENAINGLESS_CARDS = [(-7, -11), (-99, -9)]
+MENAINGLESS_CARDS = [(-7, -11), (-99, -9), (-321, -77)]
 
 class PredictionDataset(Dataset):
     def __init__(self, features, labels):
@@ -89,19 +98,43 @@ def board_strengths(board):
     max_count = counter.most_common(1)[0][1]
     strength_flop = max_count - 1
     # turn
-    ranks = [card[0] for card in board[:4]]
+    ranks = sorted([card[0] for card in board[:4]], reverse=True)
     counter = Counter(ranks)
-    max_count = counter.most_common(1)[0][1]
-    strength_turn = max_count -1
+    most_comon = counter.most_common(1)[0]
+    max_count = most_comon[1]
+    least_comon = counter.most_common()[-1]
+    min_count = least_comon[1]
+    if min_count == 2:
+        strength_turn = 2
+    elif max_count == 3:
+        strength_turn = 3
+    else:
+        strength_turn = max_count -1
 
-    strength_river = int(strength_old(board + MENAINGLESS_CARDS))
+    if strength_turn == 0:
+        strength_turn = 1e-2*ranks[0] + 1e-4*ranks[1] + 1e-6*ranks[2] + 1e-8*ranks[3]
+    elif strength_turn == 1:
+        pair = most_comon[0]
+        kickers = [rank for rank in ranks if rank != pair]
+        strength_turn += 1e-2*pair + 1e-4*kickers[0] + 1e-6*kickers[1]
+    elif strength_turn == 2:
+        pairs = sorted(list(set(ranks)))
+        strength_turn += 1e-2*pairs[1] + 1e-4*pairs[0]
+    elif strength_turn == 3:
+        strength_turn += 1e-2* most_comon[0] + 1e-4*least_comon[0]
+    else:
+        strength_turn += 1e-2*ranks[0]
+
+
+
+    strength_river = strength_old(board + MENAINGLESS_CARDS[:-1])
 
     return strength_flop, strength_turn, strength_river
 
 
-def float_to_list(num):
+def float_to_list(num, turn=False):
     # Ensure precision and convert to string
-    num_str = f"{num:.10f}"
+    num_str = f"{num:.8f}" if turn else f"{num:.10f}"
     integer_part, fractional_part = num_str.split('.')
 
     # Convert integer part and create the list of pairs from fractional part
@@ -140,13 +173,25 @@ def producer(buffer, chunk_size):
         hand_values_turn = []
         hand_values_river = []
 
+        hand_values_turn_board = []
+        hand_values_river_board = []
+
         for _ in range(chunk_size):
+            special_hands = random.random() < .2
             random.shuffle(deck)
             cards = deck[: 7]
+            if special_hands:
+                while strength_old(cards) < 4:
+                    random.shuffle(deck)
+                    cards = deck[: 7]
+
             remaining_cards_river = np.array(deck[7: ])
 
             cards_int = [card_to_int[card] for card in cards]
+            # add special hand types
+
             strength_hero = strength(cards)
+
             if cards[0][0]==cards[1][0]:
                 hand_type_preflop = 2
             elif cards[0][1] == cards[1][1]:
@@ -154,7 +199,7 @@ def producer(buffer, chunk_size):
             else:
                 hand_type_preflop = 0
             hand_types_preflop.append(hand_type_preflop)
-            strength_flop = strength_old(cards[:5] + MENAINGLESS_CARDS)
+            strength_flop = strength_old(cards[:5] + MENAINGLESS_CARDS[:-1])
             strength_flop_cat = float_to_list(strength_flop)
             hand_types_flop.append(strength_flop_cat[0])
             hand_values_flop.append(strength_flop_cat)
@@ -188,8 +233,14 @@ def producer(buffer, chunk_size):
 
             board_flop, board_turn, board_river = board_strengths(cards[2:])
             board_strengths_flop.append(board_flop)
-            board_strengths_turn.append(board_turn)
-            board_strengths_river.append(board_river)
+
+            strength_turn_board_cat = float_to_list(board_turn, True)
+            strength_river_board_cat = float_to_list(board_river)
+
+            hand_values_turn_board.append(strength_turn_board_cat)
+            board_strengths_turn.append(strength_turn_board_cat[0])
+            hand_values_river_board.append(strength_river_board_cat)
+            board_strengths_river.append(strength_river_board_cat[0])
 
             villain_holecards_river = remaining_cards_river[COMBO_INDICES_RIVER]
             villain_hands_river = np.hstack([villain_holecards_river, np.tile(cards[2:],  (990, 1, 1))])
@@ -204,12 +255,12 @@ def producer(buffer, chunk_size):
             hero_turn_list.append(cards[:6])
             runouts_turn.append(turn_runout)
         strengths_hero = np.array(strengths_hero_list)
-        strengths_villain = strength_array(np.vstack(villain_hands_list))
+        strengths_villain_flat = strength_array(np.vstack(villain_hands_list))
         # compare strengths
-        strengths_villain = strengths_villain.reshape(-1, chunk_size)
-        p_tie = np.mean(strengths_hero == strengths_villain, axis=0)
-        p_win = np.mean(strengths_hero > strengths_villain, axis=0)
-        p_loss = np.mean(strengths_hero < strengths_villain, axis=0)
+        strengths_villain = strengths_villain_flat.reshape(chunk_size, -1)
+        p_tie = (strengths_hero[:, None] == strengths_villain).mean(axis=-1)
+        p_win = (strengths_hero[:, None] > strengths_villain).mean(axis=-1)
+        p_loss = (strengths_hero[:, None] < strengths_villain).mean(axis=-1)
         features = np.vstack(card_int_list)
         probs_river = np.column_stack([p_tie, p_win, p_loss])
         probs_flop = np.stack(probs_flop)
@@ -251,6 +302,9 @@ def producer(buffer, chunk_size):
             "hand_values_flop": np.array(hand_values_flop).astype(np.int64),
             "hand_values_turn": np.array(hand_values_turn).astype(np.int64),
             "hand_values_river": np.array(hand_values_river).astype(np.int64),
+
+            "hand_values_turn_board": np.array(hand_values_turn_board).astype(np.int64),
+            "hand_values_river_board": np.array(hand_values_river_board).astype(np.int64),
         }
 
         buffer.put([features, labels])
@@ -294,6 +348,17 @@ def calc_losses(predictions: dict, labels: dict):
     log_probs_river_kicker_3 = predictions["log_probs_river_kicker_3"]
     log_probs_river_kicker_4 = predictions["log_probs_river_kicker_4"]
 
+    log_probs_turn_board_kicker_0 = predictions["log_probs_turn_board_kicker_0"]
+    log_probs_turn_board_kicker_1 = predictions["log_probs_turn_board_kicker_1"]
+    log_probs_turn_board_kicker_2 = predictions["log_probs_turn_board_kicker_2"]
+    log_probs_turn_board_kicker_3 = predictions["log_probs_turn_board_kicker_3"]
+
+    log_probs_river_board_kicker_0 = predictions["log_probs_river_board_kicker_0"]
+    log_probs_river_board_kicker_1 = predictions["log_probs_river_board_kicker_1"]
+    log_probs_river_board_kicker_2 = predictions["log_probs_river_board_kicker_2"]
+    log_probs_river_board_kicker_3 = predictions["log_probs_river_board_kicker_3"]
+    log_probs_river_board_kicker_4 = predictions["log_probs_river_board_kicker_4"]
+
 
 
     y_outcome_preflop = torch.tensor(labels["outcome_preflop"], dtype=torch.float32, device=device)
@@ -335,10 +400,24 @@ def calc_losses(predictions: dict, labels: dict):
     y_river_kicker_3 = kickers_river_tensor[:, 4]
     y_river_kicker_4 = kickers_river_tensor[:, 5]
 
+    kickers_turn_board_tensor = torch.tensor(labels["hand_values_turn_board"]).to(device)
+    y_turn_kicker_board_0 = kickers_turn_board_tensor[:, 1]
+    y_turn_kicker_board_1 = kickers_turn_board_tensor[:, 2]
+    y_turn_kicker_board_2 = kickers_turn_board_tensor[:, 3]
+    y_turn_kicker_board_3 = kickers_turn_board_tensor[:, 4]
+
+    kickers_river_board_tensor = torch.tensor(labels["hand_values_river_board"]).to(device)
+    y_river_kicker_board_0 = kickers_river_board_tensor[:, 1]
+    y_river_kicker_board_1 = kickers_river_board_tensor[:, 2]
+    y_river_kicker_board_2 = kickers_river_board_tensor[:, 3]
+    y_river_kicker_board_3 = kickers_river_board_tensor[:, 4]
+    y_river_kicker_board_4 = kickers_river_board_tensor[:, 5]
+
+
     loss_outcome_preflop = F.kl_div(log_probs_preflop, y_outcome_preflop, reduction="batchmean")
     loss_type_preflop = F.cross_entropy(log_probs_type_preflop, y_type_preflop)
 
-    loss_outcome_flop = F.kl_div(log_probs_flop, y_outcome_flop, reduction="batchmean")
+
     loss_type_flop = F.cross_entropy(log_probs_type_flop, y_type_flop)
     loss_type_turn = F.cross_entropy(log_probs_type_turn, y_type_turn)
     loss_type_river = F.cross_entropy(log_probs_type_river, y_type_river)
@@ -352,7 +431,8 @@ def calc_losses(predictions: dict, labels: dict):
     loss_board_strength_turn = F.cross_entropy(log_probs_board_strength_turn, y_board_strength_turn)
     loss_board_strength_river = F.cross_entropy(log_probs_board_strength_river, y_board_strength_river)
 
-    loss_outcome_turn = F.kl_div(log_probs_turn, y_outcome_turn, reduction="batchmean")
+    loss_outcome_flop  = F.kl_div(log_probs_flop, y_outcome_flop, reduction="batchmean")
+    loss_outcome_turn =  F.kl_div(log_probs_turn, y_outcome_turn, reduction="batchmean")
     loss_outcome_river = F.kl_div(log_probs_river, y_outcome_river, reduction="batchmean")
 
     loss_flop_kicker_0 = F.cross_entropy(log_probs_flop_kicker_0, y_flop_kicker_0)
@@ -385,6 +465,32 @@ def calc_losses(predictions: dict, labels: dict):
     mask_river_kicker_4 = y_river_kicker_4 != -2
     loss_river_kicker_4 = F.cross_entropy(log_probs_river_kicker_4[mask_river_kicker_4], y_river_kicker_4[mask_river_kicker_4])
 
+
+    loss_turn_kicker_board_0 = F.cross_entropy(log_probs_turn_board_kicker_0, y_turn_kicker_board_0)
+    mask_turn_kicker_board_1 = y_turn_kicker_board_1 != -2
+    loss_turn_kicker_board_1 = F.cross_entropy(
+        log_probs_turn_board_kicker_1[mask_turn_kicker_board_1], y_turn_kicker_board_1[mask_turn_kicker_board_1])
+    mask_turn_kicker_board_2 = y_turn_kicker_board_2 != -2
+    loss_turn_kicker_board_2 = F.cross_entropy(
+        log_probs_turn_board_kicker_2[mask_turn_kicker_board_2], y_turn_kicker_board_2[mask_turn_kicker_board_2])
+    mask_turn_kicker_board_3 = y_turn_kicker_board_3 != -2
+    loss_turn_kicker_board_3 = F.cross_entropy(
+        log_probs_turn_board_kicker_3[mask_turn_kicker_board_3], y_turn_kicker_board_3[mask_turn_kicker_board_3])
+
+
+    loss_river_kicker_board_0 = F.cross_entropy(log_probs_river_board_kicker_0, y_river_kicker_board_0)
+    mask_river_kicker_board_1 = y_river_kicker_board_1 != -2
+    loss_river_kicker_board_1 = F.cross_entropy(
+        log_probs_river_board_kicker_1[mask_river_kicker_board_1], y_river_kicker_board_1[mask_river_kicker_board_1])
+    mask_river_kicker_board_2 = y_river_kicker_board_2 != -2
+    loss_river_kicker_board_2 = F.cross_entropy(
+        log_probs_river_board_kicker_2[mask_river_kicker_board_2], y_river_kicker_board_2[mask_river_kicker_board_2])
+    mask_river_kicker_board_3 = y_river_kicker_board_3 != -2
+    loss_river_kicker_board_3 = F.cross_entropy(
+        log_probs_river_board_kicker_3[mask_river_kicker_board_3], y_river_kicker_board_3[mask_river_kicker_board_3])
+    mask_river_kicker_board_4 = y_river_kicker_board_4 != -2
+    loss_river_kicker_board_4 = F.cross_entropy(
+        log_probs_river_board_kicker_4[mask_river_kicker_board_4], y_river_kicker_board_4[mask_river_kicker_board_4])
 
     return {
         "outcome_preflop": loss_outcome_preflop,
@@ -422,6 +528,19 @@ def calc_losses(predictions: dict, labels: dict):
         "river_kicker_2": loss_river_kicker_2,
         "river_kicker_3": loss_river_kicker_3,
         "river_kicker_4": loss_river_kicker_4,
+
+        # Kicker Board Losses
+        "turn_kicker_board_0": loss_turn_kicker_board_0,
+        "turn_kicker_board_1": loss_turn_kicker_board_1,
+        "turn_kicker_board_2": loss_turn_kicker_board_2,
+        "turn_kicker_board_3": loss_turn_kicker_board_3,
+
+
+        "river_kicker_board_0": loss_river_kicker_board_0,
+        "river_kicker_board_1": loss_river_kicker_board_1,
+        "river_kicker_board_2": loss_river_kicker_board_2,
+        "river_kicker_board_3": loss_river_kicker_board_3,
+        "river_kicker_board_4": loss_river_kicker_board_4,
 
     }
 
@@ -478,7 +597,23 @@ def consumer(queue, model, optimizer, save_interval, save_path, tasks, untrained
                     kickers_turn = tuple([kickers_turn_tensor[:, i] for i in range(5)])
                     kickers_river = tuple([kickers_river_tensor[:, i] for i in range(5)])
 
-                    _, results = model(preflop, flop, turn, river, *kickers_flop, *kickers_turn, *kickers_river)
+                    kickers_turn_board_tensor = torch.tensor(labels["hand_values_turn_board"]).to(device)
+                    kickers_river_board_tensor = torch.tensor(labels["hand_values_river_board"]).to(device)
+
+                    kickers_turn_board = tuple([kickers_turn_board_tensor[:, i] for i in range(4)])
+                    kickers_river_board = tuple([kickers_river_board_tensor[:, i] for i in range(5)])
+
+                    _, results = model(
+                        preflop,
+                        flop,
+                        turn,
+                        river,
+                        *kickers_flop,
+                        *kickers_turn,
+                        *kickers_river,
+                        *kickers_turn_board,
+                        *kickers_river_board,
+                    )
 
                     losses = calc_losses(results, labels)
                     optimizer.zero_grad()
@@ -507,7 +642,7 @@ def consumer(queue, model, optimizer, save_interval, save_path, tasks, untrained
                 pbar.set_postfix({
                     "PR": f"{ema_losses['outcome_river'] / correction_factor:.5f}",
                     "TypeR": f"{ema_losses['type_river'] / correction_factor:.5f}",
-                    #"PP": f"{ema_losses['outcome_preflop'] / correction_factor:.8f}",
+                    # "PP": f"{ema_losses['outcome_preflop'] / correction_factor:.8f}",
                     #"TypeP": f"{ema_losses['preflop_type'] / correction_factor:.8f}",
                     "PF": f"{ema_losses['outcome_flop'] / correction_factor:.5f}",
                     "TypeF": f"{ema_losses['type_flop'] / correction_factor:.5f}",
@@ -521,25 +656,38 @@ def consumer(queue, model, optimizer, save_interval, save_path, tasks, untrained
                     "boardT": f"{ema_losses['board_strength_turn'] / correction_factor:.5f}",
                     "boardR": f"{ema_losses['board_strength_river'] / correction_factor:.5f}",
 
-                    "FK0": f"{ema_losses['flop_kicker_0'] / correction_factor:.3f}",
-                    "FK1": f"{ema_losses['flop_kicker_1'] / correction_factor:.3f}",
-                    "FK2": f"{ema_losses['flop_kicker_2'] / correction_factor:.3f}",
-                    "FK3": f"{ema_losses['flop_kicker_3'] / correction_factor:.3f}",
-                    "FK4": f"{ema_losses['flop_kicker_4'] / correction_factor:.3f}",
+                    #"FK0": f"{ema_losses['flop_kicker_0'] / correction_factor:.3f}",
+                    #"FK1": f"{ema_losses['flop_kicker_1'] / correction_factor:.3f}",
+                    #"FK2": f"{ema_losses['flop_kicker_2'] / correction_factor:.3f}",
+                    #"FK3": f"{ema_losses['flop_kicker_3'] / correction_factor:.3f}",
+                    #"FK4": f"{ema_losses['flop_kicker_4'] / correction_factor:.3f}",
 
                     # Turn Losses
-                    "TK0": f"{ema_losses['turn_kicker_0'] / correction_factor:.3f}",
-                    "TK1": f"{ema_losses['turn_kicker_1'] / correction_factor:.3f}",
-                    "TK2": f"{ema_losses['turn_kicker_2'] / correction_factor:.3f}",
-                    "TK3": f"{ema_losses['turn_kicker_3'] / correction_factor:.3f}",
-                    "TK4": f"{ema_losses['turn_kicker_4'] / correction_factor:.3f}",
+                    #"TK0": f"{ema_losses['turn_kicker_0'] / correction_factor:.3f}",
+                    #"TK1": f"{ema_losses['turn_kicker_1'] / correction_factor:.3f}",
+                    #"TK2": f"{ema_losses['turn_kicker_2'] / correction_factor:.3f}",
+                    #"TK3": f"{ema_losses['turn_kicker_3'] / correction_factor:.3f}",
+                    #"TK4": f"{ema_losses['turn_kicker_4'] / correction_factor:.3f}",
 
                     # River Losses
                     "RK0": f"{ema_losses['river_kicker_0'] / correction_factor:.3f}",
-                    "RK1": f"{ema_losses['river_kicker_1'] / correction_factor:.3f}",
-                    "RK2": f"{ema_losses['river_kicker_2'] / correction_factor:.3f}",
-                    "RK3": f"{ema_losses['river_kicker_3'] / correction_factor:.3f}",
-                    "RK4": f"{ema_losses['river_kicker_4'] / correction_factor:.3f}",
+                    #"RK1": f"{ema_losses['river_kicker_1'] / correction_factor:.3f}",
+                    #"RK2": f"{ema_losses['river_kicker_2'] / correction_factor:.3f}",
+                    #"RK3": f"{ema_losses['river_kicker_3'] / correction_factor:.3f}",
+                    #"RK4": f"{ema_losses['river_kicker_4'] / correction_factor:.3f}",
+
+                    # Board Losses
+                    "BTK0": f"{ema_losses['turn_kicker_board_0'] / correction_factor:.3f}",
+                    "BTK1": f"{ema_losses['turn_kicker_board_1'] / correction_factor:.3f}",
+                    "BTK2": f"{ema_losses['turn_kicker_board_2'] / correction_factor:.3f}",
+                    "BTK3": f"{ema_losses['turn_kicker_board_3'] / correction_factor:.3f}",
+
+                    # River Losses
+                    "BRK0": f"{ema_losses['river_kicker_board_0'] / correction_factor:.3f}",
+                    "BRK1": f"{ema_losses['river_kicker_board_1'] / correction_factor:.3f}",
+                    "BRK2": f"{ema_losses['river_kicker_board_2'] / correction_factor:.3f}",
+                    "BRK3": f"{ema_losses['river_kicker_board_3'] / correction_factor:.3f}",
+                    "BRK4": f"{ema_losses['river_kicker_board_4'] / correction_factor:.3f}",
 
                 })
 
@@ -568,8 +716,16 @@ def load_checkpoint(path, model, optimizer=None, lr=None, strict=True):
     """
 
     try:
-        checkpoint = torch.load(path)  # Load the checkpoint file
-        model.load_state_dict(checkpoint["model_state_dict"], strict=strict)  # Load model weights
+        checkpoint = torch.load(path) # Load the checkpoint file
+
+        model_state_dict = model.state_dict()
+
+        # Filter out mismatched layers
+        filtered_state_dict = {k: v for k, v in checkpoint["model_state_dict"].items() if
+                               k in model_state_dict and v.shape == model_state_dict[k].shape}
+
+        # Load the filtered parameters
+        model.load_state_dict(filtered_state_dict, strict=False)
 
         if optimizer and strict:  # If an optimizer is provided, load its state
 
@@ -587,9 +743,9 @@ def load_checkpoint(path, model, optimizer=None, lr=None, strict=True):
         print("No checkpoint found. Starting training from scratch.")
         return 0
 
-NUM_PRODUCERS = 5  # Adjust this to the number of cores you want for producers
+NUM_PRODUCERS = 7  # Adjust this to the number of cores you want for producers
 BUFFER_SIZE = 300_000  # Buffer size for the multiprocessing queue
-BATCH_SIZE = 512  # Batch size for training
+BATCH_SIZE = 256  # Batch size for training
 SAVE_INTERVAL = 1_000_000  # Save model checkpoint every 1M samples
 MODEL_SAVE_PATH = "model_checkpoint.pth"  # Path to save model checkpoints
 embedding_dim = 4  # Size of individual card embeddings
@@ -598,7 +754,7 @@ feature_dim = 256  # Size of output feature vectors
 deep_layer_dims = (512, 2048, 2048, 2048)
 intermediary_dim = 16
 load = True
-strict = False
+strict = True
 if __name__ == "__main__":
     tasks = [
         "outcome_preflop",
@@ -631,6 +787,18 @@ if __name__ == "__main__":
         "river_kicker_2",
         "river_kicker_3",
         "river_kicker_4",
+
+        # Kicker Board Losses
+        "turn_kicker_board_0",
+        "turn_kicker_board_1",
+        "turn_kicker_board_2",
+        "turn_kicker_board_3",
+
+        "river_kicker_board_0",
+        "river_kicker_board_1",
+        "river_kicker_board_2",
+        "river_kicker_board_3",
+        "river_kicker_board_4",
     ]
     # Use 'spawn' to support CUDA with multiprocessing
     set_start_method("spawn", force=True)
@@ -643,9 +811,8 @@ if __name__ == "__main__":
 
     # Load checkpoint (optional)
     if load:
-        total_samples = load_checkpoint(MODEL_SAVE_PATH, model, optimizer, strict=strict)
-        if strict:
-            optimizer = torch.optim.AdamW(model.parameters(), lr=0.0001)
+        total_samples = load_checkpoint(MODEL_SAVE_PATH, model, optimizer, strict=strict, lr=0.00001)
+
     # Initialize multiprocessing queue and event
     remainder = BUFFER_SIZE % BATCH_SIZE
     true_buffer_size = BUFFER_SIZE + (BATCH_SIZE - remainder) if remainder != 0 else BUFFER_SIZE

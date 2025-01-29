@@ -20,9 +20,9 @@ class PokerHandEmbedding(nn.Module):
 
         # Dynamically create deep layers based on the sizes
         self.preflop_deep_layer = nn.Linear(embedding_dim * 2, deep_layer_sizes[0])
-        self.flop_deep_layer = nn.Linear(feature_dim + embedding_dim * 3, deep_layer_sizes[1])
-        self.turn_deep_layer = nn.Linear(feature_dim + embedding_dim, deep_layer_sizes[2])
-        self.river_deep_layer = nn.Linear(feature_dim + embedding_dim, deep_layer_sizes[3])
+        self.flop_deep_layer = nn.Linear(feature_dim + embedding_dim * 3 + 6, deep_layer_sizes[1])
+        self.turn_deep_layer = nn.Linear(feature_dim + embedding_dim + 85, deep_layer_sizes[2])
+        self.river_deep_layer = nn.Linear(feature_dim + embedding_dim + 221, deep_layer_sizes[3])
 
         # Fully connected layers for feature extraction
         self.preflop_fc = nn.Linear(deep_layer_sizes[0], feature_dim)
@@ -83,7 +83,7 @@ class PokerHandEmbedding(nn.Module):
             nn.Linear(intermediary_dim, 3)
         )
 
-        self.head_outcome_probs = nn.Sequential(
+        self.head_outcome_probs_river = nn.Sequential(
             nn.Linear(feature_dim, intermediary_dim),
             nn.GELU(),
             nn.Linear(intermediary_dim, 3)
@@ -212,6 +212,63 @@ class PokerHandEmbedding(nn.Module):
         )
 
 
+        # kickers for board only
+        self.head_board_turn_kicker_0 = nn.Sequential(
+            nn.Linear(feature_dim + 5, intermediary_dim),
+            nn.GELU(),
+            nn.Linear(intermediary_dim, 13)
+        )
+
+        self.head_board_turn_kicker_1 = nn.Sequential(
+            nn.Linear(feature_dim + 13, intermediary_dim),
+            nn.GELU(),
+            nn.Linear(intermediary_dim, 13)
+        )
+
+        self.head_board_turn_kicker_2 = nn.Sequential(
+            nn.Linear(feature_dim + 13, intermediary_dim),
+            nn.GELU(),
+            nn.Linear(intermediary_dim, 12)
+        )
+
+        self.head_board_turn_kicker_3 = nn.Sequential( # highest possible kicker Jack
+            nn.Linear(feature_dim + 13, intermediary_dim),
+            nn.GELU(),
+            nn.Linear(intermediary_dim, 11)
+        )
+
+
+
+        self.head_board_river_kicker_0 = nn.Sequential(
+            nn.Linear(feature_dim + 9, intermediary_dim),
+            nn.GELU(),
+            nn.Linear(intermediary_dim, 13)
+        )
+
+        self.head_board_river_kicker_1 = nn.Sequential(
+            nn.Linear(feature_dim + 13, intermediary_dim),
+            nn.GELU(),
+            nn.Linear(intermediary_dim, 13)
+        )
+
+        self.head_board_river_kicker_2 = nn.Sequential(
+            nn.Linear(feature_dim + 13, intermediary_dim),
+            nn.GELU(),
+            nn.Linear(intermediary_dim, 13)
+        )
+
+        self.head_board_river_kicker_3 = nn.Sequential( # highest possible kicker Jack
+            nn.Linear(feature_dim + 13, intermediary_dim),
+            nn.GELU(),
+            nn.Linear(intermediary_dim, 11)
+        )
+
+        self.head_board_river_kicker_4 = nn.Sequential( # High Card and FLush have 5 kickers
+            nn.Linear(feature_dim + 11, intermediary_dim),
+            nn.GELU(),
+            nn.Linear(intermediary_dim, 8) # highest possible last kicker is 9
+        )
+
     def forward(
             self,
             preflop,
@@ -233,6 +290,17 @@ class PokerHandEmbedding(nn.Module):
             river_kicker_1 = None,
             river_kicker_2 = None,
             river_kicker_3 = None,
+
+
+            turn_strength_board=None,
+            turn_kicker_board_0=None,
+            turn_kicker_board_1=None,
+            turn_kicker_board_2=None,
+            river_strength_board=None,
+            river_kicker_board_0=None,
+            river_kicker_board_1=None,
+            river_kicker_board_2=None,
+            river_kicker_board_3=None,
     ):
         """
         Forward pass through the PokerHandEmbedding model.
@@ -280,6 +348,17 @@ class PokerHandEmbedding(nn.Module):
             "log_probs_river_kicker_2": None,
             "log_probs_river_kicker_3": None,
             "log_probs_river_kicker_4": None,
+
+            "log_probs_turn_board_kicker_0": None,
+            "log_probs_turn_board_kicker_1": None,
+            "log_probs_turn_board_kicker_2": None,
+            "log_probs_turn_board_kicker_3": None,
+
+            "log_probs_river_board_kicker_0": None,
+            "log_probs_river_board_kicker_1": None,
+            "log_probs_river_board_kicker_2": None,
+            "log_probs_river_board_kicker_3": None,
+            "log_probs_river_board_kicker_4": None,
         }
 
         # Embed and process preflop cards
@@ -295,7 +374,15 @@ class PokerHandEmbedding(nn.Module):
         # Process flop stage
         if flop is not None:
             flop_emb = self.card_embedding(flop).view(flop.size(0), -1)
-            combined_flop = torch.cat([features, flop_emb], dim=-1)
+            # combine all flop outputs
+            preflop_outputs = torch.cat(
+                [
+                    predictions["log_probs_outcome_preflop"].detach(),
+                    predictions["log_probs_preflop_type"].detach(),
+                 ], dim=-1
+            )
+
+            combined_flop = torch.cat([features, flop_emb, preflop_outputs], dim=-1)
             flop_deep = self.activation(self.flop_deep_layer(combined_flop))
             features = self.activation(self.flop_fc(flop_deep))
             predictions["log_probs_type_flop"] = torch.log_softmax(self.head_hand_type_flop(features), dim=-1)
@@ -304,8 +391,6 @@ class PokerHandEmbedding(nn.Module):
             predictions["log_probs_flush_draw_flop"] = torch.log_softmax(self.head_flush_draw_flop(features), dim=-1)
             predictions["log_probs_board_strength_flop"] = torch.log_softmax(self.head_strength_flop(features), dim=-1)
 
-            predictions["log_probs_outcome_flop"] = torch.log_softmax(self.head_outcome_probs_flop(features),
-                                                                         dim=-1)
 
             # kickers
             label_flop_value = flop_strength if flop_strength is not None else torch.argmax(predictions["log_probs_type_flop"] , dim=1)
@@ -347,11 +432,31 @@ class PokerHandEmbedding(nn.Module):
                 }
             )
 
+            predictions["log_probs_outcome_flop"] = torch.log_softmax(self.head_outcome_probs_flop(features), dim=-1)
 
         # Process turn stage
         if turn is not None:
             turn_emb = self.card_embedding(turn).view(turn.size(0), -1)
-            combined_turn = torch.cat([features, turn_emb], dim=-1)
+
+            # combine all flop outputs
+            flop_outputs = torch.cat(
+                [
+                    predictions["log_probs_type_flop"].detach(),
+                    predictions["log_probs_straight_draw_flop"].detach(),
+                    predictions["log_probs_flush_draw_flop"].detach(),
+                    predictions["log_probs_board_strength_flop"].detach(),
+                    predictions["log_probs_outcome_flop"].detach(),
+                    kicker_flop_0.detach(),
+                    kicker_flop_1.detach(),
+                    kicker_flop_2.detach(),
+                    kicker_flop_3.detach(),
+                    kicker_flop_4.detach(),
+                    preflop_outputs.detach(),
+                ], dim=-1
+            )
+            combined_turn = torch.cat([features, turn_emb, flop_outputs], dim=-1)
+
+
             turn_deep = self.activation(self.turn_deep_layer(combined_turn))
             features = self.activation(self.turn_fc(turn_deep))
             predictions["log_probs_type_turn"] = torch.log_softmax(self.head_hand_type_turn(features), dim=-1)
@@ -359,8 +464,6 @@ class PokerHandEmbedding(nn.Module):
                                                                             dim=-1)
             predictions["log_probs_flush_draw_turn"] = torch.log_softmax(self.head_flush_draw_turn(features), dim=-1)
             predictions["log_probs_board_strength_turn"] = torch.log_softmax(self.head_strength_turn(features), dim=-1)
-            predictions["log_probs_outcome_turn"] = torch.log_softmax(self.head_outcome_probs_turn(features),
-                                                                         dim=-1)
 
             label_turn_value = turn_strength if turn_strength is not None else torch.argmax(predictions["log_probs_type_turn"] , dim=1)
             label_turn_value = torch.nn.functional.one_hot(label_turn_value.clamp(min=0), num_classes=9).float()
@@ -401,13 +504,68 @@ class PokerHandEmbedding(nn.Module):
                 })
 
 
+            label_turn_board_value = turn_strength_board if turn_strength_board is not None else torch.argmax(predictions["log_probs_board_strength_turn"] , dim=1)
+            label_turn_board_value = torch.nn.functional.one_hot(label_turn_board_value.clamp(min=0), num_classes=5).float()
+            kicker_turn_board_0 = torch.log_softmax(
+                self.head_board_turn_kicker_0(torch.cat([features, label_turn_board_value], dim=1)), dim=-1)
+
+            label_turn_board_kicker_0 = turn_kicker_board_0 if turn_kicker_board_0 is not None else torch.argmax(kicker_turn_board_0 , dim=1)
+            label_turn_board_kicker_0_enc = torch.nn.functional.one_hot(label_turn_board_kicker_0.clamp(0), num_classes=13).float()
+            label_turn_board_kicker_0_enc[label_turn_board_kicker_0==-2] = 0
+            kicker_turn_board_1 = torch.log_softmax(
+                self.head_board_turn_kicker_1(torch.cat([features, label_turn_board_kicker_0_enc], dim=1)), dim=-1)
+
+            label_turn_board_kicker_1 = turn_kicker_board_1 if turn_kicker_board_1 is not None else torch.argmax(kicker_turn_board_1 , dim=1)
+            label_turn_board_kicker_1_enc = torch.nn.functional.one_hot(label_turn_board_kicker_1.clamp(0), num_classes=13).float()
+            label_turn_board_kicker_1_enc[label_turn_board_kicker_1==-2] = 0
+            kicker_turn_board_2 = torch.log_softmax(
+                self.head_board_turn_kicker_2(torch.cat([features, label_turn_board_kicker_1_enc], dim=1)), dim=-1)
+
+            label_turn_board_kicker_2 = turn_kicker_board_2 if turn_kicker_board_2 is not None else torch.argmax(kicker_turn_board_2 , dim=1)
+            label_turn_board_kicker_2_enc = torch.nn.functional.one_hot(label_turn_board_kicker_2.clamp(0), num_classes=13).float()
+            label_turn_board_kicker_2_enc[label_turn_board_kicker_2==-2] = 0
+            kicker_turn_board_3 = torch.log_softmax(
+                self.head_board_turn_kicker_3(torch.cat([features, label_turn_board_kicker_2_enc], dim=1)), dim=-1)
+
+            predictions.update(
+                {
+                    "log_probs_turn_board_kicker_0": kicker_turn_board_0,
+                    "log_probs_turn_board_kicker_1": kicker_turn_board_1,
+                    "log_probs_turn_board_kicker_2": kicker_turn_board_2,
+                    "log_probs_turn_board_kicker_3": kicker_turn_board_3,
+                })
+            predictions["log_probs_outcome_turn"] = torch.log_softmax(self.head_outcome_probs_turn(features), dim=-1)
+
+
         # Process river stage
         if river is not None:
             river_emb = self.card_embedding(river).view(river.size(0), -1)
-            combined_river = torch.cat([features, river_emb], dim=-1)
+
+            turn_outputs = torch.cat(
+                [
+                    predictions["log_probs_type_turn"].detach(),
+                    predictions["log_probs_straight_draw_turn"].detach(),
+                    predictions["log_probs_flush_draw_turn"].detach(),
+                    predictions["log_probs_board_strength_turn"].detach(),
+                    predictions["log_probs_outcome_turn"].detach(),
+                    kicker_turn_0.detach(),
+                    kicker_turn_1.detach(),
+                    kicker_turn_2.detach(),
+                    kicker_turn_3.detach(),
+                    kicker_turn_4.detach(),
+                    kicker_turn_board_0.detach(),
+                    kicker_turn_board_1.detach(),
+                    kicker_turn_board_2.detach(),
+                    kicker_turn_board_3.detach(),
+                    preflop_outputs.detach(),
+                    flop_outputs.detach(),
+                ], dim=-1
+            )
+
+            combined_river = torch.cat([features, river_emb, turn_outputs], dim=-1)
             river_deep = self.activation(self.river_deep_layer(combined_river))
             features = self.activation(self.river_fc(river_deep))
-            predictions["log_probs_outcome_river"] = torch.log_softmax(self.head_outcome_probs(features), dim=-1)
+
             predictions["log_probs_type_river"] = torch.log_softmax(self.head_hand_type_river(features), dim=-1)
             predictions["log_probs_board_strength_river"] = torch.log_softmax(self.head_strength_river(features), dim=-1)
 
@@ -448,8 +606,53 @@ class PokerHandEmbedding(nn.Module):
                     "log_probs_river_kicker_2": kicker_river_2,
                     "log_probs_river_kicker_3": kicker_river_3,
                     "log_probs_river_kicker_4": kicker_river_4,
+                })
+
+            # board kickers
+            label_river_board_value = river_strength_board if river_strength_board is not None else torch.argmax(
+                predictions["log_probs_board_strength_river"], dim=1)
+            label_river_board_value = torch.nn.functional.one_hot(label_river_board_value.clamp(min=0), num_classes=9).float()
+            kicker_river_board_0 = torch.log_softmax(
+                self.head_board_river_kicker_0(torch.cat([features, label_river_board_value], dim=1)), dim=-1)
+
+            label_river_board_kicker_0 = river_kicker_board_0 if river_kicker_board_0 is not None else torch.argmax(kicker_river_board_0, dim=1)
+            label_river_board_kicker_0_enc = torch.nn.functional.one_hot(label_river_board_kicker_0.clamp(0),
+                                                                   num_classes=13).float()
+            label_river_board_kicker_0_enc[label_river_board_kicker_0 == -2] = 0
+            kicker_river_board_1 = torch.log_softmax(
+                self.head_board_river_kicker_1(torch.cat([features, label_river_board_kicker_0_enc], dim=1)), dim=-1)
+
+            label_river_board_kicker_1 = river_kicker_board_1 if river_kicker_board_1 is not None else torch.argmax(kicker_river_board_1, dim=1)
+            label_river_board_kicker_1_enc = torch.nn.functional.one_hot(label_river_board_kicker_1.clamp(0),
+                                                                   num_classes=13).float()
+            label_river_board_kicker_1_enc[label_river_board_kicker_1 == -2] = 0
+            kicker_river_board_2 = torch.log_softmax(
+                self.head_board_river_kicker_2(torch.cat([features, label_river_board_kicker_1_enc], dim=1)), dim=-1)
+
+            label_river_board_kicker_2 = river_kicker_board_2 if river_kicker_board_2 is not None else torch.argmax(kicker_river_board_2, dim=1)
+            label_river_board_kicker_2_enc = torch.nn.functional.one_hot(label_river_board_kicker_2.clamp(0),
+                                                                   num_classes=13).float()
+            label_river_board_kicker_2_enc[label_river_board_kicker_2 == -2] = 0
+            kicker_river_board_3 = torch.log_softmax(
+                self.head_board_river_kicker_3(torch.cat([features, label_river_board_kicker_2_enc], dim=1)), dim=-1)
+
+            label_river_board_kicker_3 = river_kicker_board_3 if river_kicker_board_3 is not None else torch.argmax(kicker_river_board_3, dim=1)
+            label_river_board_kicker_3_enc = torch.nn.functional.one_hot(label_river_board_kicker_3.clamp(0),
+                                                                   num_classes=11).float()
+            label_river_board_kicker_3_enc[label_river_board_kicker_3 == -2] = 0
+            kicker_river_board_4 = torch.log_softmax(
+                self.head_board_river_kicker_4(torch.cat([features, label_river_board_kicker_3_enc], dim=1)), dim=-1)
+
+            predictions.update(
+                {
+                    "log_probs_river_board_kicker_0": kicker_river_board_0,
+                    "log_probs_river_board_kicker_1": kicker_river_board_1,
+                    "log_probs_river_board_kicker_2": kicker_river_board_2,
+                    "log_probs_river_board_kicker_3": kicker_river_board_3,
+                    "log_probs_river_board_kicker_4": kicker_river_board_4,
                 }
             )
+            predictions["log_probs_outcome_river"] = torch.log_softmax(self.head_outcome_probs_river(features), dim=-1)
         return features, predictions
 
 
