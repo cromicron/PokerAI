@@ -135,6 +135,8 @@ class Agent:
     def add_to_sequence(self, state):
         self.policy.add_to_sequence(state)
 
+    def add_to_sequence_range(self, state):
+        self.policy.add_to_sequence_range(state)
     def generate_training_data(self):
         """generate training data from episodes"""
         value_function = self.value_function if self.encode_value else None
