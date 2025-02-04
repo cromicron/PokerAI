@@ -3,6 +3,7 @@ import random
 import pickle
 import numpy as np
 import os
+from time import perf_counter
 
 
 flush_lookup_path = os.path.join(os.path.dirname(__file__), "flush_lookup.pkl")
@@ -76,7 +77,6 @@ def strength_array(hands, sorted=False):
     # Sort ranks and retrieve sorting indices
     if not sorted:
         sorted_indices = np.argsort(-ranks, axis=-1)
-
         # Directly reorder ranks and suits using advanced indexing
         batch_indices = np.arange(hands.shape[0])[:, None]
         sorted_ranks = ranks[batch_indices, sorted_indices]
@@ -87,14 +87,9 @@ def strength_array(hands, sorted=False):
     # Encode suits
     suit_ints = sorted_suits @ suit_weights
     suit_indices = np.searchsorted(suit_keys, suit_ints)
-    try:
-        suits_encoded = suit_values[suit_indices]
-    except:
-        print("well")
-
+    suits_encoded = suit_values[suit_indices]
     # Encode hands
     hand_encoded = encode_hands_array(sorted_ranks, suits_encoded)
-
     # Lookup hand strengths
     hand_strength_indices = np.searchsorted(strength_keys, hand_encoded)
     hand_strengths = strength_values[hand_strength_indices]

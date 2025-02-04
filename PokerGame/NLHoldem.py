@@ -11,11 +11,22 @@ from datetime import datetime
 
 value_dict = {10: 'T', 11: 'J', 12: 'Q', 13:'K', 14: 'A'}
 suit_dict = {0:'c', 1:'d', 2:'h', 3:'s'}
+deck_encode = [(rank, suit) for rank in range(2, 15) for suit in range(4)]
+card_to_int = {
+    card: i for i, card in enumerate(deck_encode)
+}
+int_to_card = {
+    i: card for i, card in enumerate(deck_encode)
+}
+deck = [(rank, suit) for rank in range(2, 15) for suit in range(4)]
+
+
 class Card:
     def __init__(self, value, suit):
         self.value = value
         self.suit = suit
         self.representation = str(value)+suit_dict[suit] if value < 10 else value_dict[value]+suit_dict[suit]
+        self.int = card_to_int[(self.value, self.suit)]
 
 class Deck(list):
     def __init__(self):
@@ -36,8 +47,13 @@ class Player:
         self.starting_stack = copy.copy(stack)
         self.holecards = None
         self.bet = 0 #how much has player put into the pot in the current betting round
+        self.position = None
     def get_holecard_representation(self):
         return self.holecards[0].representation+self.holecards[1].representation
+
+    @property
+    def hole_int(self):
+        return [card.int for card in self.holecards]
 
 class Pot:
     def __init__(self, players, pot_size):
@@ -83,6 +99,8 @@ class Game:
             if not first_hand:
                 self.positions.rotate(-1)
         self.left_in_hand = copy.copy(self.positions)
+        for player in self.players:
+            player.position = self.positions.index(player)
         if reset_to_starting:
             for player in self.players:
                 player.stack = player.starting_stack
@@ -119,6 +137,55 @@ class Game:
             big_blind = self.positions[1].name
             self.hand_history.set_blinds(small_blind, 1, big_blind, 2)
 
+    def get_state(self, player):
+        """Gives all necessary info of the current state for the player"""
+        starting_stacks = [player.starting_stack for player in self.positions]
+        in_play = [int(player in self.left_in_hand) for player in self.positions]
+        stacks = [player.stack for player in self.positions]
+        bets = [player.bet for player in self.positions]
+        is_acting = self.acting_player == player
+
+        state = {
+            "n_players": self.n_players,
+            "position": player.position,
+            "starting_stack": player.starting_stack,
+            "starting_stacks": starting_stacks,
+            "in_play": in_play,
+            "stack": player.stack,
+            "stacks": stacks,
+            "street": self.street,
+            "bets": bets,
+            "holecards": player.holecards,
+            "board": self.board,
+            "is_acting": is_acting,
+            "legal_actions": self.get_legal_actions() if is_acting else None,
+            "legal_betsize": self.get_legal_betsize() if is_acting else None,
+            "bet": player.bet,
+            "last_action": self.last_action,
+        }
+        return state
+
+    @property
+    def board_int(self):
+        if self.street == 1:
+            return self.flop_int, None, None
+        elif self.street == 2:
+            return self.flop_int, self.turn_int, None
+        elif self.street == 3:
+            return self.flop_int, self.turn_int, self.river_int
+        else:
+            raise NotImplementedError
+    @property
+    def flop_int(self):
+        return [card.int for card in self.board[:3]]
+
+    @property
+    def turn_int(self):
+        return self.board[3].int
+
+    @property
+    def river_int(self):
+        return self.board[4].int
 
     def compare(self,players):
         #takes in players and returns relative hand strengths as list
@@ -130,6 +197,10 @@ class Game:
         #compares hands of remaining players and distributes chips accordingly
         #check for side pot possibilities: When a player is all in and has less chips than any of the remaining
         #players starting stacks
+
+        # save stacks before showdown
+        for player in self.players:
+            player.stack_before_showdown = player.stack
         if hasattr(self, "hand_history"):
             for player in self.left_in_hand:
                 self.hand_history.record_action(4, player.name, "shows", amount=player.get_holecard_representation())

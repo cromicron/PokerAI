@@ -640,8 +640,8 @@ def consumer(queue, model, optimizer, save_interval, save_path, tasks, untrained
                 # Update progress bar
                 pbar.update(batch_size_actual)
                 pbar.set_postfix({
-                    "PR": f"{ema_losses['outcome_river'] / correction_factor:.5f}",
-                    "TypeR": f"{ema_losses['type_river'] / correction_factor:.5f}",
+                    "PR": f"{ema_losses['outcome_river'] / correction_factor:.7f}",
+                    "TypeR": f"{ema_losses['type_river'] / correction_factor:.7f}",
                     # "PP": f"{ema_losses['outcome_preflop'] / correction_factor:.8f}",
                     #"TypeP": f"{ema_losses['preflop_type'] / correction_factor:.8f}",
                     "PF": f"{ema_losses['outcome_flop'] / correction_factor:.5f}",
@@ -652,9 +652,9 @@ def consumer(queue, model, optimizer, save_interval, save_path, tasks, untrained
                     "TypeT": f"{ema_losses['type_turn'] / correction_factor:.5f}",
                     "SDT": f"{ema_losses['straight_draw_turn'] / correction_factor:.5f}",
                     "FDT": f"{ema_losses['flush_draw_turn'] / correction_factor:.5f}",
-                    "boardF": f"{ema_losses['board_strength_flop'] / correction_factor:.5f}",
-                    "boardT": f"{ema_losses['board_strength_turn'] / correction_factor:.5f}",
-                    "boardR": f"{ema_losses['board_strength_river'] / correction_factor:.5f}",
+                    "boardF": f"{ema_losses['board_strength_flop'] / correction_factor:.3f}",
+                    "boardT": f"{ema_losses['board_strength_turn'] / correction_factor:.3f}",
+                    "boardR": f"{ema_losses['board_strength_river'] / correction_factor:.3f}",
 
                     #"FK0": f"{ema_losses['flop_kicker_0'] / correction_factor:.3f}",
                     #"FK1": f"{ema_losses['flop_kicker_1'] / correction_factor:.3f}",
@@ -743,9 +743,9 @@ def load_checkpoint(path, model, optimizer=None, lr=None, strict=True):
         print("No checkpoint found. Starting training from scratch.")
         return 0
 
-NUM_PRODUCERS = 7  # Adjust this to the number of cores you want for producers
+NUM_PRODUCERS = 6  # Adjust this to the number of cores you want for producers
 BUFFER_SIZE = 300_000  # Buffer size for the multiprocessing queue
-BATCH_SIZE = 256  # Batch size for training
+BATCH_SIZE = 2048  # Batch size for training
 SAVE_INTERVAL = 1_000_000  # Save model checkpoint every 1M samples
 MODEL_SAVE_PATH = "model_checkpoint.pth"  # Path to save model checkpoints
 embedding_dim = 4  # Size of individual card embeddings
@@ -811,7 +811,7 @@ if __name__ == "__main__":
 
     # Load checkpoint (optional)
     if load:
-        total_samples = load_checkpoint(MODEL_SAVE_PATH, model, optimizer, strict=strict, lr=0.00001)
+        total_samples = load_checkpoint(MODEL_SAVE_PATH, model, optimizer, strict=strict, lr=1e-5)
 
     # Initialize multiprocessing queue and event
     remainder = BUFFER_SIZE % BATCH_SIZE

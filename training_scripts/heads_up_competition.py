@@ -1,8 +1,8 @@
-from encoders.state_encoder import encode_state
-from encoders.strength_encoder import encode_strength
+from encoders.embedding_hand_encoder import encode
 from PokerGame.NLHoldem import Game, Card, Player
-from value_functions.gru_value_function import GRUValueFunction
-from policies.mixed_gru_policy import MixedGruPolicy
+from value_functions.split_gru_value_function import GRUValueFunction
+from policies.split_gru_policy import SplitGruPolicy
+from lookup.HandComparatorLookup import strength_array, strength
 import torch
 import numpy as np
 from algos.ppo import Agent, Episode, check_hand_evals
@@ -19,6 +19,7 @@ torch.set_flush_denormal(True)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 os.environ["RAY_memory_usage_threshold"] = ".98"
 ray.init()
+
 
 class LeaguePlayer(Agent):
     def __init__(
@@ -80,10 +81,12 @@ class Match:
         self.max_games = max_games
         self.finished = False
         self.result = None
-    def play_match(self):
+    def play_match(self, reward_type = "ranges_only"):
         starting_scores = {agent: agent.score for agent in self.players}
         assert self.finished == False, "This game is already finished"
         game = Game(stacks=[agent.player.starting_stack for agent in self.players])
+        if reward_type != "regular":
+            assert game.n_players == 2, "This feature is only implemented for two-player games."
         agents_dict = {}
         for player, agent in zip(game.players, self.players):
             agent.change_player(player)
@@ -97,21 +100,52 @@ class Match:
                 agent.blind = agent.player.bet
                 agent.episodes.append(Episode())
                 agent.policy.reset()
-
+            street = 0
             while not game.finished:
                 # Record observations for all players at this step
                 for agent in self.players:
-                    game_state = encode_state(game, agent.player)
-                    hand_strength = encode_strength(agent.player.holecards, game.board)
-                    state = np.hstack([game_state, hand_strength])
-                    agent.episodes[-1].add_observation(state)
+                    state = game.get_state(agent.player)
+                    recurrent_state, static_state = agent.policy.encode_state(state)
+                    hole_int = agent.player.hole_int
+                    if game.street >0:
+                        flop_int, turn_int, river_int = game.board_int
+                        if game.street > street:
+                            if street == 0:
+                                cards_to_remove = flop_int
+                            elif street == 1:
+                                cards_to_remove = [turn_int]
+                            else:
+                                cards_to_remove = [river_int]
+                            agent.policy.remove_cards_from_range(cards_to_remove)
+                            agent.policy.update_feature_array(flop_int, turn_int, river_int)
+
+                    else:
+                        flop_int = turn_int = river_int = None
+                    features = encode(hole_int, flop_int, turn_int, river_int)
+
+                    if features is None:
+                        a = 1
+                        print("here")
+                    features = torch.cat([
+                        recurrent_state,
+                        static_state,
+                        features.squeeze(),
+                    ], dim=-1)
+                    agent.episodes[-1].add_observation(features)
                     if agent.player != game.acting_player:
                         agent.episodes[-1].add_action(None, None)
-                    agent.add_to_sequence(state)
+                    agent.add_to_sequence(features)
+                    try:
+                        agent.add_to_sequence_range(features[:recurrent_state.shape[0]+static_state.shape[0]])
+                    except:
+                        a = 1
+                        print(a)
 
                 # Acting player decides an action
+                street = game.street
                 current_player = game.acting_player
-                action, betsize, action_type, betfrac, legal_actions = agents_dict[current_player].get_action(game=game, temperature=exploration_temp)
+                state = game.get_state(current_player)
+                action, betsize, action_type, betfrac, legal_actions = agents_dict[current_player].get_action(state, temperature=exploration_temp)
                 action_add = (action_type, betfrac)
                 agents_dict[current_player].episodes[-1].add_action(action_add, legal_actions)
 
@@ -120,11 +154,75 @@ class Match:
 
             # At the end of the hand, record the rewards for all players
             # If
+            if (len(game.left_in_hand) > 1) and (reward_type in ("single_range", "ranges_only")):
+                # there was a showdown and thus each player has it's own range
+                board = [(card.value, card.suit) for card in game.board]
+                board_array = np.tile(board, (1326, 1, 1))
+                board_int = []
+                for street in game.board_int:
+                    if type(street) in (list, tuple):
+                        board_int.extend(street)
+                    else:
+                        board_int.append(street)
             for agent in self.players:
-                score = agent.player.stack - agent.player.starting_stack
+                if (len(game.left_in_hand) == 1) or (reward_type == "regular"):
+                    score = agent.player.stack - agent.player.starting_stack
+                elif reward_type in ("single_range", "ranges_only"):
+                    if reward_type == "single_raise":
+                        all_cards_to_remove = board_int + agent.player.hole_int
+                    else:
+                        all_cards_to_remove = board_int
+                        agent.policy.remove_cards_from_range(all_cards_to_remove)
+                    # remove all board cards and self-cards from range
+                    villain = [p.policy for p in self.players if p != agent][0]
+                    villain_range = villain.range.copy()
+                    villain.remove_cards_from_range(all_cards_to_remove)
+
+                    villain_all_hands = np.concatenate([villain.all_holecards_tuple, board_array], axis=1)
+                    villain_strengths = strength_array(villain_all_hands)
+                    if reward_type == "single_raise":
+                        remaining_hands = villain.range != 0
+                        villain_strengths = villain_strengths[remaining_hands]
+                        hero_cards = [(card.value, card.suit) for card in agent.player.holecards] + board
+                        hero_strength = strength(hero_cards)
+                        p_win = ((hero_strength > villain_strengths) * villain.range[remaining_hands]).sum()
+                        p_tie = ((hero_strength == villain_strengths) * villain.range[remaining_hands]).sum()
+
+                    else:
+                        hero_range = agent.policy.range.copy()
+                        valid_mask = agent.policy.valid_comparisons
+
+                        hero_all_hands = np.concatenate([agent.policy.all_holecards_tuple, board_array], axis=1)
+                        hero_strengths = strength_array(hero_all_hands)
+
+
+                        villain_range_probs =  villain.range[None, :]
+                        win_weighted = np.sum(
+                            (
+                                    hero_strengths[:, None] > villain_strengths
+                            )* villain_range_probs *valid_mask, axis=1)
+                        tie_weighted = np.sum(
+                            (
+                                    hero_strengths[:, None] == villain_strengths
+                            ) * villain_range_probs * valid_mask, axis=1)
+
+                        total_weights = np.sum(valid_mask * villain_range_probs, axis=1)
+
+                        p_win = win_weighted / total_weights
+                        p_tie = tie_weighted / total_weights
+
+                        agent.policy.range = hero_range
+
+                    score = agent.player.stack_before_showdown + p_win * game.pot + 1 / (
+                        len(game.left_in_hand)) * p_tie * game.pot - agent.player.starting_stack
+                    villain.range = villain_range
+
                 reward = score + agent.blind
                 agent.episodes[-1].finish_episode(reward)
-                agent.score += score
+                if reward_type == "ranges_only":
+                    agent.score += (score * agent.policy.range).sum()
+                else:
+                    agent.score += score
                 agent.n_games += 1
             self.n_games += 1
             if self.n_games == self.max_games:
@@ -163,7 +261,7 @@ class League:
             players: List[LeaguePlayer],
             games_per_match=500,
             games_till_evolution=100_000,
-            games_per_match_evolution=1000,
+            games_per_match_evolution=10,
             n_evolutions=1,
             path_evolutions_pol= "../policies/saved_models/evolutions/",
             path_evolutions_val="../value_functions/saved_models/evolutions/",
@@ -309,36 +407,36 @@ entropy_coeff = 1
 
 path_policies = "../policies/saved_models/"
 path_value_functions = "../value_functions/saved_models/"
-load_for_model = [True for _ in range(num_agents)]
+load_for_model = [False for _ in range(num_agents)]
 
 
 game = Game(n_players=2, stacks=[stack for _ in range(players_per_hand)])
 game.new_hand(first_hand=True)
 
 # Compute state vector size using a dummy state
-dummy_player = game.players[0]
-dummy_state = encode_state(game, dummy_player)
-dummy_cards = dummy_player.holecards
-dummy_strength = encode_strength(dummy_cards)
-state_vector_value = torch.tensor(
-    np.hstack([dummy_state, dummy_strength]), dtype=torch.float32
-)
-state_vector_value = state_vector_value.shape[0]
 
+hidden_size = 128
+input_size_recurrent = 42
+input_size_static = 30
+linear_layers = (256, 256)
+feature_dim = 259
 value_functions = [
     GRUValueFunction(
-            input_size=state_vector_value,
-            hidden_size=256,
-            num_gru_layers=1,
+            input_size_recurrent,
+            feature_dim + input_size_static,
+            hidden_size,
+            1,
             linear_layers=(256, 128),
         ) for _ in range(num_agents)
 ]
+
 policies = [
-    MixedGruPolicy(
-        input_size=state_vector_value + 2,
-        hidden_size=256,
-        num_gru_layers=1,
-        linear_layers=(256, 128),
+    SplitGruPolicy(
+        input_size_recurrent,
+        feature_dim + input_size_static +2,
+        hidden_size,
+        1,
+        linear_layers,
         value_function=v,
     ) for v in value_functions
 ]
@@ -365,10 +463,10 @@ while True:
         gc.collect()
         agent.policy.to("cpu")
         agent.value_function.to("cpu")
-        check_hand_evals(agent, output_file=f"evaluations/hand_evaluations_{a_nr}.csv", new_game=game)
+        #check_hand_evals(agent, output_file=f"evaluations/hand_evaluations_{a_nr}.csv", new_game=game)
     if agent.n_games >= league.n_evolutions*league.games_till_evolution:
         print("Evolving Players")
-        league.evolution(True)
+        league.evolution(False)
 
     league.create_schedule()
     now = time()

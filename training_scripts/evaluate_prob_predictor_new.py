@@ -31,7 +31,7 @@ deep_layer_dims = (512, 2048, 2048, 2048)
 intermediary_dim = 16
 embedding_dim = 4
 model = PokerHandEmbedding(embedding_dim, feature_dim, deep_layer_dims, intermediary_dim)
-model.load_state_dict(torch.load("model_checkpoint.pth")["model_state_dict"], strict=False)
+model.load_state_dict(torch.load("model_checkpoint.pth")["model_state_dict"], strict=True)
 
 # Test cases
 categories = {
@@ -41,6 +41,8 @@ categories = {
         ([Card(4, 1), Card(4, 2)], [Card(14, 3), Card(14, 2), Card(14, 1), Card(13, 0), Card(3, 3)]),
         ([Card(10, 1), Card(4, 2)], [Card(10, 3), Card(9, 3), Card(8, 3), Card(7, 3), Card(3, 0)]),
         ([Card(10, 1), Card(8, 2)], [Card(11, 3), Card(8, 3), Card(2, 0), Card(7, 3), Card(3, 0)]),
+        ([Card(7, 0), Card(9, 0)], [Card(9, 3), Card(13, 1), Card(7, 3), Card(5, 3), Card(8, 0)]),
+        ([Card(3, 0), Card(9, 3)], [Card(8, 2), Card(3, 2), Card(2, 3), Card(5, 0), Card(13, 1)]),
     ],
 
     "Split Pot Certainty" : [

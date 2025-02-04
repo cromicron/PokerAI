@@ -1,39 +1,37 @@
-from modules.gru_module import GRUModule
+from modules.split_gru_module import SplitGRUModule
+from modules.mixed_distribution_head import MixedDistributionHead
 from torch import nn
 import matplotlib.pyplot as plt
-from modules.mixed_distribution_head import MixedDistributionHead
 import torch
 
 
-
-class MixedGRUModule(nn.Module):
+class SplitGRUActionModule(nn.Module):
     def __init__(
             self,
-            input_size,
+            input_size_recurrent,
+            input_size_regular,
             hidden_size,
             num_gru_layers,
             linear_layers,
-            num_peaks=3,  # Number of Beta components
-            activation=nn.LeakyReLU,
-            single_raise=True,
+            num_peaks=3,
+            activation=nn.GELU,
     ):
         super().__init__()
+        self._input_size_recurrent = input_size_recurrent
+        self._input_size_regular = input_size_regular
+        # GRU Layer for processing betting sequences only
+        self.split_gru = SplitGRUModule(
+            input_size_recurrent,
+            input_size_regular,
+            hidden_size,
+            num_gru_layers,
+            linear_layers,
+            activation,
+        )
 
-        # GRU Layer
-        self.gru = GRUModule(input_size, hidden_size, num_gru_layers, linear_layers, activation, output_dim=None)
-        for name, param in self.gru.named_parameters():
-            if 'weight' in name:
-                # Apply Xavier (Glorot) Uniform Initialization to all weight matrices
-                torch.nn.init.xavier_uniform_(param)
-            elif 'bias' in name:
-                # Initialize biases to zero (optional, can be constant or other strategies too)
-                torch.nn.init.zeros_(param)
-        current_input_size = linear_layers[-1]
-        categories = 3 if single_raise else 5
-
-        # Output Layers
-        self.head = MixedDistributionHead(current_input_size, 2 * num_peaks, activation)
+        self.head = MixedDistributionHead(linear_layers[-1], num_peaks, activation)
         self.activation = activation()
+
 
     def forward(self, x, hidden_state=None, return_sequences=False, action_mask=None):
         """
@@ -49,13 +47,9 @@ class MixedGRUModule(nn.Module):
             Tensor: Updated hidden state.
         """
         # GRU forward
-        out, hidden_state = self.gru(x, hidden_state,
-                                     return_sequences)  # (B, T, hidden_size), (num_layers, B, hidden_size)
-
-        # Compute category logits
-        unified_distribution = self.head(out)
-
-        return unified_distribution, hidden_state
+        out, hidden_state = self.split_gru(x, hidden_state, return_sequences)  # GRU handles all layers internally
+        dist = self.head(out, action_mask)
+        return dist, hidden_state
 
     def plot_beta_density(self, input_tensor, hand_labels=None, num_points=1000):
         """
@@ -136,4 +130,3 @@ class MixedGRUModule(nn.Module):
         plt.legend()
         plt.grid()
         plt.show()
-
