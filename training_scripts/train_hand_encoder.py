@@ -2,7 +2,7 @@ import random
 from multiprocessing import Process, Queue, Lock, set_start_method, Event
 from collections import Counter
 import torch
-import torch_optimizer as optim
+import pickle
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
@@ -12,7 +12,6 @@ from encoders.hand_encoder import PokerHandEmbedding
 from lookup.HandComparatorLookup import  strength, strength_array
 from lookup.lookup_probs_flop import get_probs_flop
 from PokerGame.HandComperator import strength as strength_old
-
 import pickle
 
 
@@ -34,7 +33,7 @@ in_to_card = {
     i: card for i, card in enumerate(deck)
 }
 COMBO_INDICES_RIVER = np.array(list(combinations(range(45), 2)))
-N_SIM_TURN = 250
+N_SIM_TURN = 5000
 COMBO_INDICES_TURN = np.stack([np.random.choice(range(46), 3, replace=False) for _ in range(N_SIM_TURN)])
 MENAINGLESS_CARDS = [(-7, -11), (-99, -9), (-321, -77)]
 
@@ -563,10 +562,28 @@ def consumer(queue, model, optimizer, save_interval, save_path, tasks, untrained
     t = 0  # Weight for bias correction
     loss_weights = {}
     weights_initialized = False
+    feature_dump = []
+    label_dump = []
+    data_idx = 0
     with tqdm(desc="Training Progress", total=None, dynamic_ncols=True) as pbar:
         while True:
             try:
                 features, labels = queue.get()  # Blocking call to fetch data from the queue
+                feature_dump.append(features)
+                label_dump.append(labels)
+                if len(feature_dump) == 100:
+                    feature_data = np.vstack(feature_dump)
+                    np.save(f"{PATH_DATA}/features_{data_idx:04d}.npy", feature_data)
+
+                    label_data = {key: np.concatenate([d[key] for d in label_dump]) for key in label_dump[0]}
+                    with open(f"{PATH_DATA}/labels_{data_idx:04d}.pkl", "wb") as f:
+                        pickle.dump(label_data, f)
+                    data_idx += 1
+                    print("saved data " + str(data_idx))
+                    feature_dump = []
+                    label_dump = []
+
+
                 features = torch.tensor(features, dtype=torch.long, device=device)
                 preflop = features[:, :2]
                 flop = features[:, 2:5]
@@ -631,6 +648,7 @@ def consumer(queue, model, optimizer, save_interval, save_path, tasks, untrained
                 samples_since_last_save += batch_size_actual
                 # Update EMA loss
                 # Update EMA loss with bias correction
+
                 t += 1
 
                 correction_factor = 1 - (1 - ema_alpha) ** t
@@ -693,6 +711,7 @@ def consumer(queue, model, optimizer, save_interval, save_path, tasks, untrained
 
                 # Save model checkpoint periodically
                 if samples_since_last_save >= save_interval:
+
                     save_model(model, optimizer, total_samples, save_path)
                     samples_since_last_save = 0  # Reset save counter
 
@@ -743,10 +762,11 @@ def load_checkpoint(path, model, optimizer=None, lr=None, strict=True):
         print("No checkpoint found. Starting training from scratch.")
         return 0
 
-NUM_PRODUCERS = 6  # Adjust this to the number of cores you want for producers
-BUFFER_SIZE = 300_000  # Buffer size for the multiprocessing queue
-BATCH_SIZE = 2048  # Batch size for training
+NUM_PRODUCERS = 7  # Adjust this to the number of cores you want for producers
+BUFFER_SIZE = 1_000_000  # Buffer size for the multiprocessing queue
+BATCH_SIZE = 1024  # Batch size for training
 SAVE_INTERVAL = 1_000_000  # Save model checkpoint every 1M samples
+MODEL_LOAD_PATH = "best_model.pth"
 MODEL_SAVE_PATH = "model_checkpoint.pth"  # Path to save model checkpoints
 embedding_dim = 4  # Size of individual card embeddings
 # Example usage
@@ -755,6 +775,8 @@ deep_layer_dims = (512, 2048, 2048, 2048)
 intermediary_dim = 16
 load = True
 strict = True
+PATH_DATA = "/mnt/e/pokerAI/encoder_data"
+
 if __name__ == "__main__":
     tasks = [
         "outcome_preflop",
@@ -811,7 +833,7 @@ if __name__ == "__main__":
 
     # Load checkpoint (optional)
     if load:
-        total_samples = load_checkpoint(MODEL_SAVE_PATH, model, optimizer, strict=strict, lr=1e-5)
+        total_samples = load_checkpoint(MODEL_LOAD_PATH, model, optimizer, strict=strict, lr=1e-6)
 
     # Initialize multiprocessing queue and event
     remainder = BUFFER_SIZE % BATCH_SIZE
