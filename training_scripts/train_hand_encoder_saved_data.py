@@ -11,13 +11,13 @@ from multiprocessing import Process, Queue
 # Constants
 PATH_DATA_TRAIN = "/mnt/e/pokerAI/encoder_data/train/large"
 PATH_DATA_EVAL = "/mnt/e/pokerAI/encoder_data/eval"
-MODEL_SAVE_PATH = "model_checkpoint.pth"
+MODEL_SAVE_PATH = "best_model.pth"
 BEST_MODEL_PATH = "best_model.pth"
 embedding_dim = 4
 feature_dim = 256
 deep_layer_dims = (512, 2048, 2048, 2048)
 intermediary_dim = 16
-batch_size = 32_000
+batch_size = 32768
 num_epochs = 100
 num_workers = 4
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -30,7 +30,7 @@ epochs_no_improve = 0
 
 # **STEP 1: Initialize Model Without Loading Checkpoint**
 model = PokerHandEmbedding(embedding_dim, feature_dim, deep_layer_dims, intermediary_dim).to(device)
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5)
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
 
 # **STEP 2: Compute Initial Loss Magnitudes**
 print("\n🔍 Computing initial loss magnitudes on untrained model...")
@@ -59,7 +59,9 @@ loss_weights = {task: 1.0 / max(initial_losses[task].item(), 1e-6) for task in i
 print(f"✅ Initial loss weights computed: {loss_weights}\n")
 
 # **STEP 3: Load Checkpoint & Define Scheduler**
-load_checkpoint(BEST_MODEL_PATH, model, optimizer)
+load_checkpoint(MODEL_SAVE_PATH, model, optimizer)
+
+model.freeze_except(["head_outcome_probs_river"])
 with torch.no_grad():
     _, eval_results = model(preflop_eval, flop_eval, turn_eval, river_eval)
     eval_losses = calc_losses(eval_results, eval_labels)  # REVERT TO PREVIOUS WORKING STATE
@@ -120,6 +122,7 @@ for epoch in range(num_epochs):
     total_train_loss = 0
     num_batches = 0
     outcome_river_loss_total = 0
+    outcome_turn_loss_total = 0
     type_river_loss_total = 0
 
     tqdm_bar = tqdm(total=len(feature_files), desc=f"Epoch {epoch + 1}", unit="file", dynamic_ncols=True)
@@ -146,6 +149,7 @@ for epoch in range(num_epochs):
 
             # Extract required losses for logging
             outcome_river_loss = losses.get("outcome_river", torch.tensor(0.0, device=device)).item()
+            outcome_turn_loss = losses.get("outcome_turn", torch.tensor(0.0, device=device)).item()
             type_river_loss = losses.get("type_river", torch.tensor(0.0, device=device)).item()
 
             # Backpropagation
@@ -155,6 +159,7 @@ for epoch in range(num_epochs):
             # Aggregate losses
             total_train_loss += total_loss.item()
             outcome_river_loss_total += outcome_river_loss
+            outcome_turn_loss_total += outcome_turn_loss
             type_river_loss_total += type_river_loss
             num_batches += 1
 
@@ -162,6 +167,7 @@ for epoch in range(num_epochs):
                 avg_loss=f"{total_train_loss / num_batches:.6f}",
                 outcome_river=f"{outcome_river_loss_total / num_batches:.6f}",
                 type_river=f"{type_river_loss_total / num_batches:.6f}",
+                outcome_turn=f"{outcome_turn_loss_total / num_batches:.6f}",
                 file=file_name,
             )
 
@@ -174,7 +180,7 @@ for epoch in range(num_epochs):
             eval_losses = calc_losses(eval_results, eval_labels)  # REVERTED BACK TO WORKING STATE
             total_eval_loss = sum(loss_weights[task] * eval_losses[task] for task in eval_losses if task != "outcome_turn").item()
 
-        print(f"📊 Eval total: {total_eval_loss:.6f}, PR: {eval_losses['outcome_river']:.6f}, TR: {eval_losses['type_river']:.6f}")
+        print(f"📊 Eval total: {total_eval_loss:.8f}, PR: {eval_losses['outcome_river']:.8f}, TR: {eval_losses['type_river']:.8f}, PT: {eval_losses['outcome_turn']:.8f}")
 
         # ReduceLROnPlateau after each file
         scheduler.step(eval_losses['outcome_river'])
