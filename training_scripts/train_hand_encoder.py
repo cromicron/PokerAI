@@ -33,7 +33,7 @@ in_to_card = {
     i: card for i, card in enumerate(deck)
 }
 COMBO_INDICES_RIVER = np.array(list(combinations(range(45), 2)))
-N_SIM_TURN = 5000
+N_SIM_TURN = 20
 COMBO_INDICES_TURN = np.stack([np.random.choice(range(46), 3, replace=False) for _ in range(N_SIM_TURN)])
 MENAINGLESS_CARDS = [(-7, -11), (-99, -9), (-321, -77)]
 
