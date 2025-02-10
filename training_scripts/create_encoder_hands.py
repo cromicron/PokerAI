@@ -310,28 +310,27 @@ def consumer(queue, batches_per_file=100, n_files=10_000):
     label_dump = []
     data_idx = 0
     for _ in tqdm(range(n_files)):
-        while True:
-            try:
-                features, labels = queue.get()  # Blocking call to fetch data from the queue
-                feature_dump.append(features)
-                label_dump.append(labels)
-                if len(feature_dump) == batches_per_file:
-                    feature_data = np.vstack(feature_dump)
-                    file_path_features = Path(PATH_DATA) / f"features_{data_idx:04d}.npy"
-                    np.save(file_path_features, feature_data)
-                    label_data = {key: np.concatenate([d[key] for d in label_dump]) for key in label_dump[0]}
-                    file_path_labels = Path(PATH_DATA) / f"labels_{data_idx:04d}.pkl"
-                    with file_path_labels.open("wb") as f:
-                        pickle.dump(label_data, f)
-                    data_idx += 1
-                    print("saved data " + str(data_idx))
-                    feature_dump = []
-                    label_dump = []
+        try:
+            features, labels = queue.get()  # Blocking call to fetch data from the queue
+            feature_dump.append(features)
+            label_dump.append(labels)
+            if len(feature_dump) == batches_per_file:
+                feature_data = np.vstack(feature_dump)
+                file_path_features = Path(PATH_DATA) / f"features_{data_idx:04d}.npy"
+                np.save(file_path_features, feature_data)
+                label_data = {key: np.concatenate([d[key] for d in label_dump]) for key in label_dump[0]}
+                file_path_labels = Path(PATH_DATA) / f"labels_{data_idx:04d}.pkl"
+                with file_path_labels.open("wb") as f:
+                    pickle.dump(label_data, f)
+                data_idx += 1
+                print("saved data " + str(data_idx))
+                feature_dump = []
+                label_dump = []
 
 
-            except Exception as e:
-                print(f"Error in consumer: {e}")
-                break
+        except Exception as e:
+            print(f"Error in consumer: {e}")
+            break
 
 
 
