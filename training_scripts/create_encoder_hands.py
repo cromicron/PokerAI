@@ -323,7 +323,6 @@ def consumer(queue, batches_per_file=100, n_files=10_000):
                 with file_path_labels.open("wb") as f:
                     pickle.dump(label_data, f)
                 data_idx += 1
-                print("saved data " + str(data_idx))
                 feature_dump = []
                 label_dump = []
 
