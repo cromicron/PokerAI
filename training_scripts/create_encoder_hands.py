@@ -37,7 +37,7 @@ in_to_card = {
     i: card for i, card in enumerate(deck)
 }
 COMBO_INDICES_RIVER = np.array(list(combinations(range(45), 2)))
-N_SIM_TURN = 20
+N_SIM_TURN = 10_000
 COMBO_INDICES_TURN = np.stack([np.random.choice(range(46), 3, replace=False) for _ in range(N_SIM_TURN)])
 MENAINGLESS_CARDS = [(-7, -11), (-99, -9), (-321, -77)]
 
@@ -335,7 +335,7 @@ def consumer(queue, batches_per_file=100, n_files=10_000):
 
 
 
-NUM_PRODUCERS = 7  # Adjust this to the number of cores you want for producers
+NUM_PRODUCERS = 30  # Adjust this to the number of cores you want for producers
 BUFFER_SIZE = 1_000_000  # Buffer size for the multiprocessing queue
 BATCH_SIZE = 1024  # Batch size for training
 PATH_DATA = "../data"
@@ -410,7 +410,7 @@ if __name__ == "__main__":
     # Define and start the consumer process
     consumer_process = Process(
         target=consumer,
-        args=(queue,10),
+        args=(queue,100),
     )
     consumer_process.daemon = True
     consumer_process.start()
