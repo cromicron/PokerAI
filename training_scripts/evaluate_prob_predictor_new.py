@@ -31,7 +31,7 @@ deep_layer_dims = (512, 2048, 2048, 2048)
 intermediary_dim = 16
 embedding_dim = 4
 model = PokerHandEmbedding(embedding_dim, feature_dim, deep_layer_dims, intermediary_dim)
-model.load_state_dict(torch.load("model_checkpoint.pth")["model_state_dict"], strict=True)
+model.load_state_dict(torch.load("best_model.pth")["model_state_dict"], strict=True)
 
 # Test cases
 categories = {

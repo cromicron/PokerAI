@@ -1,3 +1,10 @@
+import sys
+import os
+
+# Add the 'src' directory to Python's module search path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+
+
 import random
 from multiprocessing import Process, Queue, Lock, set_start_method, Event
 from collections import Counter
@@ -8,11 +15,14 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from itertools import combinations
 import numpy as np
-from encoders.hand_encoder import PokerHandEmbedding
-from lookup.HandComparatorLookup import  strength, strength_array
-from lookup.lookup_probs_flop import get_probs_flop
+from pokerAI.encoders.hand_encoder import PokerHandEmbedding
+from pokerAI.lookup.HandComparatorLookup import  strength, strength_array
+from pokerAI.lookup.lookup_probs_flop import get_probs_flop
 from PokerGame.HandComperator import strength as strength_old
 import pickle
+
+
+
 
 
 def log_ratio_loss(p, q, eps=1e-4):
@@ -20,7 +30,15 @@ def log_ratio_loss(p, q, eps=1e-4):
     loss = torch.abs(torch.log(p.clamp(min=eps)) -torch.clamp(q, min=np.log(eps))).sum(dim=-1)
     return loss
 
-with open("../lookup/preflop_probs.pkl", "rb") as f:
+
+# Get the absolute path to the src directory
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../src'))
+
+# Construct the correct path to the pickle file
+pkl_path = os.path.join(BASE_DIR, "pokerAI/lookup/preflop_probs.pkl")
+
+
+with open(pkl_path, "rb") as f:
     LOOKUP_PREFLOP = pickle.load(f)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

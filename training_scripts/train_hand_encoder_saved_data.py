@@ -17,7 +17,7 @@ embedding_dim = 4
 feature_dim = 256
 deep_layer_dims = (512, 2048, 2048, 2048)
 intermediary_dim = 16
-batch_size = 32768
+batch_size = 32000
 num_epochs = 100
 num_workers = 4
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -30,6 +30,7 @@ epochs_no_improve = 0
 
 # **STEP 1: Initialize Model Without Loading Checkpoint**
 model = PokerHandEmbedding(embedding_dim, feature_dim, deep_layer_dims, intermediary_dim).to(device)
+#model.load_state_dict(torch.load(MODEL_SAVE_PATH))
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
 
 # **STEP 2: Compute Initial Loss Magnitudes**
@@ -39,10 +40,10 @@ print("\n🔍 Computing initial loss magnitudes on untrained model...")
 eval_features = np.load(os.path.join(PATH_DATA_EVAL, "features_eval.npy"))
 with open(os.path.join(PATH_DATA_EVAL, "labels_eval.pkl"), "rb") as f:
     eval_labels = pickle.load(f)
-
+eval_size = eval_features.shape[0]//10
 # Convert features to tensors
-eval_features_tensor = torch.tensor(eval_features, dtype=torch.long, device=device)
-
+eval_features_tensor = torch.tensor(eval_features[:eval_size], dtype=torch.long, device=device)
+eval_labels = {key: value[:eval_size] for key, value in eval_labels.items()}
 # Split features
 preflop_eval = eval_features_tensor[:, :2]
 flop_eval = eval_features_tensor[:, 2:5]

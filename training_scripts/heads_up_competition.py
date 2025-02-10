@@ -1,4 +1,3 @@
-from encoders.embedding_hand_encoder import encode
 from PokerGame.NLHoldem import Game, Card, Player
 from value_functions.split_gru_value_function import GRUValueFunction
 from policies.split_gru_policy import SplitGruPolicy
@@ -52,7 +51,6 @@ class LeaguePlayer(Agent):
             with torch.no_grad():
                 self.policy.load_state_dict(torch.load(self._paths["policy_network"], map_location="cpu", weights_only=True))
                 self.policy.to("cpu")  # Ensure policy is explicitly on CPU
-                self.policy.module.gru.gru.flatten_parameters()
                 self.policy.eval()
 
                 self.value_function.load_state_dict(torch.load(self._paths["value_network"], map_location="cpu", weights_only=True))
@@ -105,11 +103,10 @@ class Match:
                 # Record observations for all players at this step
                 for agent in self.players:
                     state = game.get_state(agent.player)
-                    recurrent_state, static_state = agent.policy.encode_state(state)
-                    hole_int = agent.player.hole_int
+
                     if game.street >0:
                         flop_int, turn_int, river_int = game.board_int
-                        if game.street > street:
+                        if (game.street > street) and (reward_type != "regular"):
                             if street == 0:
                                 cards_to_remove = flop_int
                             elif street == 1:
@@ -119,33 +116,28 @@ class Match:
                             agent.policy.remove_cards_from_range(cards_to_remove)
                             agent.policy.update_feature_array(flop_int, turn_int, river_int)
 
-                    else:
-                        flop_int = turn_int = river_int = None
-                    features = encode(hole_int, flop_int, turn_int, river_int)
+
+
+                    features = agent.encode_state(state, reward_type=="ranges_only")
+
 
                     if features is None:
                         a = 1
                         print("here")
-                    features = torch.cat([
-                        recurrent_state,
-                        static_state,
-                        features.squeeze(),
-                    ], dim=-1)
                     agent.episodes[-1].add_observation(features)
+                    if reward_type == "ranges_only":
+                        agent.episodes[-1].add_range(agent.policy.range)
                     if agent.player != game.acting_player:
                         agent.episodes[-1].add_action(None, None)
                     agent.add_to_sequence(features)
-                    try:
-                        agent.add_to_sequence_range(features[:recurrent_state.shape[0]+static_state.shape[0]])
-                    except:
-                        a = 1
-                        print(a)
+
 
                 # Acting player decides an action
                 street = game.street
                 current_player = game.acting_player
                 state = game.get_state(current_player)
-                action, betsize, action_type, betfrac, legal_actions = agents_dict[current_player].get_action(state, temperature=exploration_temp)
+                action, betsize, action_type, betfrac, legal_actions = agents_dict[current_player].get_action(
+                    state, temperature=exploration_temp, play_range=reward_type=="ranges_only")
                 action_add = (action_type, betfrac)
                 agents_dict[current_player].episodes[-1].add_action(action_add, legal_actions)
 
@@ -164,58 +156,66 @@ class Match:
                         board_int.extend(street)
                     else:
                         board_int.append(street)
+
+                if reward_type == "ranges_only":
+                    # create strength_comparison tables for board
+                    # get strengths for entire range
+                    all_holecards = self.players[0].policy.all_holecards
+                    all_hands = np.concatenate([
+                        self.players[0].policy.all_holecards_tuple,
+                        board_array
+                        ], axis=1
+                    )
+                    non_duplicate = ~np.any(np.isin(all_holecards, board_int), axis=1)
+                    valid_comparison_mask = self.players[0].policy.valid_comparisons.copy()
+                    valid_comparison_mask[~non_duplicate, :] = False  # Set rows to False
+                    valid_comparison_mask[:, ~non_duplicate] = False
+
+                    all_strengths = np.zeros(1326, dtype=int)
+                    all_strengths[non_duplicate] = strength_array(all_hands[non_duplicate])
+
+                    win_matrix = all_strengths[:, None] > all_strengths
+                    tie_matrix = all_strengths[:, None] == all_strengths
+
+                    for p in self.players:
+                        p.policy.remove_cards_from_range(board_int)
+
+
             for agent in self.players:
                 if (len(game.left_in_hand) == 1) or (reward_type == "regular"):
                     score = agent.player.stack - agent.player.starting_stack
-                elif reward_type in ("single_range", "ranges_only"):
-                    if reward_type == "single_raise":
-                        all_cards_to_remove = board_int + agent.player.hole_int
-                    else:
-                        all_cards_to_remove = board_int
-                        agent.policy.remove_cards_from_range(all_cards_to_remove)
-                    # remove all board cards and self-cards from range
+                elif reward_type == "single_range":
+                    all_cards_to_remove = board_int + agent.player.hole_int
                     villain = [p.policy for p in self.players if p != agent][0]
                     villain_range = villain.range.copy()
                     villain.remove_cards_from_range(all_cards_to_remove)
 
                     villain_all_hands = np.concatenate([villain.all_holecards_tuple, board_array], axis=1)
-                    villain_strengths = strength_array(villain_all_hands)
-                    if reward_type == "single_raise":
-                        remaining_hands = villain.range != 0
-                        villain_strengths = villain_strengths[remaining_hands]
-                        hero_cards = [(card.value, card.suit) for card in agent.player.holecards] + board
-                        hero_strength = strength(hero_cards)
-                        p_win = ((hero_strength > villain_strengths) * villain.range[remaining_hands]).sum()
-                        p_tie = ((hero_strength == villain_strengths) * villain.range[remaining_hands]).sum()
-
-                    else:
-                        hero_range = agent.policy.range.copy()
-                        valid_mask = agent.policy.valid_comparisons
-
-                        hero_all_hands = np.concatenate([agent.policy.all_holecards_tuple, board_array], axis=1)
-                        hero_strengths = strength_array(hero_all_hands)
-
-
-                        villain_range_probs =  villain.range[None, :]
-                        win_weighted = np.sum(
-                            (
-                                    hero_strengths[:, None] > villain_strengths
-                            )* villain_range_probs *valid_mask, axis=1)
-                        tie_weighted = np.sum(
-                            (
-                                    hero_strengths[:, None] == villain_strengths
-                            ) * villain_range_probs * valid_mask, axis=1)
-
-                        total_weights = np.sum(valid_mask * villain_range_probs, axis=1)
-
-                        p_win = win_weighted / total_weights
-                        p_tie = tie_weighted / total_weights
-
-                        agent.policy.range = hero_range
-
-                    score = agent.player.stack_before_showdown + p_win * game.pot + 1 / (
-                        len(game.left_in_hand)) * p_tie * game.pot - agent.player.starting_stack
+                    non_duplicate = ~np.any(np.isin(villain.all_holecards, all_cards_to_remove), axis=1)
+                    try:
+                        villain_strengths = np.zeros(1326, dtype=int)
+                        villain_strengths[non_duplicate] = strength_array(villain_all_hands[non_duplicate])
+                    except:
+                        hj = 0
+                        print(hj)
+                    remaining_hands = villain.range != 0
+                    villain_strengths = villain_strengths[remaining_hands]
+                    hero_cards = [(card.value, card.suit) for card in agent.player.holecards] + board
+                    hero_strength = strength(hero_cards)
+                    p_win = ((hero_strength > villain_strengths) * villain.range[remaining_hands]).sum()
+                    p_tie = ((hero_strength == villain_strengths) * villain.range[remaining_hands]).sum()
                     villain.range = villain_range
+
+                elif reward_type == "ranges_only":
+                    # right now only works for 2 players
+                    villain_ranges = [a.policy.range for a in self.players if a != agent]
+                    villain_range = villain_ranges[0]
+                    p_win = (win_matrix*villain_range[None, :]).sum(axis=1)
+                    p_tie = (tie_matrix*villain_range[None, :]).sum(axis=1)
+                    score = agent.player.stack_before_showdown + p_win * game.pot  - agent.player.starting_stack + 1 / (
+                        len(game.left_in_hand)) * p_tie * game.pot
+
+
 
                 reward = score + agent.blind
                 agent.episodes[-1].finish_episode(reward)
@@ -249,11 +249,7 @@ class Matchday:
 def play_matchday_remote(matchday: Matchday):
     matchday.play_matchday()
     return matchday.pairings
-    for match in matchday.pairings:
-        for player in match.players:
-            player.policy = None
-            player.value_function = None
-    return matchday.pairings
+
 
 class League:
     def __init__(
@@ -265,18 +261,20 @@ class League:
             n_evolutions=1,
             path_evolutions_pol= "../policies/saved_models/evolutions/",
             path_evolutions_val="../value_functions/saved_models/evolutions/",
+            processes_per_match=1,
     ):
         assert len(players) % 2 == 0, "Provide an even number of teams"
         self.players = players
         self.games_per_match = games_per_match
         self.schedule = None
+        self.processes_per_match = processes_per_match
         self.create_schedule()
         self.games_till_evolution = games_till_evolution
         self.games_per_match_evolution = games_per_match_evolution
         self.n_evolutions = n_evolutions
         self.path_evolution_policy = path_evolutions_pol
         self.path_evolution_value = path_evolutions_val
-    def create_schedule(self, games_per_match=None):
+    def create_schedule(self, games_per_match=None, processes_per_match=1):
         """
         Generate a round-robin schedule for a list of teams.
 
@@ -296,8 +294,10 @@ class League:
             for i in range(num_teams // 2):
                 team1 = teams[i]
                 team2 = teams[-(i + 1)]
-                pairings.append(Match(team1, team2, max_games=games_per_match))
-            schedule.append(Matchday(pairings))
+                games_per_process = games_per_match//processes_per_match
+                pairings.append(Match(team1, team2, max_games=games_per_process))
+            for _ in range(processes_per_match):
+                schedule.append(Matchday(pairings))
             # Rotate teams (except the first one)
             teams = [teams[0]] + teams[-1:] + teams[1:-1]
 
@@ -366,6 +366,9 @@ class League:
                         player_dict[name].score += match.result[sim_player]
                         player_dict[name].n_games += match.n_games
             self._attach_optimizers()
+            ray.shutdown()
+
+
         else:
             for matchday in tqdm(self.schedule):
                  matchday.play_matchday()
@@ -398,16 +401,17 @@ class League:
             player.value_optimizer, player.policy_optimizer = self.optimizers[player]
 
 
-num_agents = 8
-hands_per_round = 500
+num_agents = 2
+hands_per_round = 100
+processes_per_match = 4
 players_per_hand = 2
 stack = 20
-exploration_temp = 1.1
+exploration_temp = 1.0
 entropy_coeff = 1
 
 path_policies = "../policies/saved_models/"
 path_value_functions = "../value_functions/saved_models/"
-load_for_model = [False for _ in range(num_agents)]
+load_for_model = [True for _ in range(num_agents)]
 
 
 game = Game(n_players=2, stacks=[stack for _ in range(players_per_hand)])
@@ -453,9 +457,9 @@ league = League([
         path_policy_optimizer=f"{path_policies}optimizer_{i}.pt",
         path_value_optimizer=f"{path_value_functions}optimizer_{i}.pt",
         load=load,
-
     ) for i, (policy, value_function, load) in enumerate(zip(policies, value_functions, load_for_model))
-], games_per_match=hands_per_round, n_evolutions=0)
+], games_per_match=hands_per_round, n_evolutions=1)
+train_ranges = True
 
 while True:
     for a_nr, agent in enumerate(league.players):
@@ -463,32 +467,40 @@ while True:
         gc.collect()
         agent.policy.to("cpu")
         agent.value_function.to("cpu")
-        #check_hand_evals(agent, output_file=f"evaluations/hand_evaluations_{a_nr}.csv", new_game=game)
+        check_hand_evals(agent, output_file=f"evaluations/hand_evaluations_{a_nr}.csv", new_game=game)
     if agent.n_games >= league.n_evolutions*league.games_till_evolution:
         print("Evolving Players")
         league.evolution(False)
 
-    league.create_schedule()
+    league.create_schedule(processes_per_match=processes_per_match)
     now = time()
-    league.play_season()
+    league.play_season(True)
     print(f"finished playing in {time() - now}")
     print(league.table)
     remote=True
-    for agent in league.players:
-        agent.generate_training_data()
-        agent.train_policy(epochs=3, batch_size=64, entropy_coef=entropy_coeff, clip_epsilon=0.05, verbose=False)
-        agent.policy.to("cpu")
-        agent.value_function.to("cpu")
+    for agent in tqdm(league.players):
+        agent.generate_training_data(ranges=True)
+        agent.train_policy(epochs=1, batch_size=8192, entropy_coef=entropy_coeff, clip_epsilon=0.05, verbose=False, ranges=True)
+        agent.value_function.to(device)
         with torch.no_grad():
-            state_input = agent.training_data["observations"]
+            state_input = agent.training_data["observations"].to(device)
             value_predictions = agent.value_function(state_input, return_sequences=True)[0]
+            torch.cuda.empty_cache()
             state_input = torch.cat([state_input, value_predictions], dim=-1)
             probs = agent.policy(state_input, return_sequences=True)[0].category_probs
-        action_types = agent.training_data["action_types"]
-        action_masks = agent.training_data["action_masks"]
+            agent.policy.to("cpu")
+            torch.cuda.empty_cache()
+        action_types = agent.training_data["action_types"].to(device)
+        action_masks = agent.training_data["action_masks"].to(device)
+        if train_ranges:
+            weights = agent.training_data["ranges_tensor"].to(device)*1326
+        else:
+            weights = None
+        torch.cuda.empty_cache()
         agent.value_function.train_on_data(
             optimizer=agent.value_optimizer,
-            epochs=3,
+            epochs=1,
+            batch_size=8192,
             observations=agent.training_data["observations"],
             rewards=agent.training_data["rewards"],
             mask=agent.training_data["masks"],
@@ -496,5 +508,10 @@ while True:
             action_masks=action_masks,
             probs=probs,
             verbose=False,
+            weights=weights
         )
+        torch.cuda.empty_cache()
+        agent.value_function.to("cpu")
+        agent.value_function.eval()
+        agent.policy.eval()
         agent.save_model()
