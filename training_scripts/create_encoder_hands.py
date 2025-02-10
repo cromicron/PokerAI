@@ -4,7 +4,6 @@ from pathlib import Path
 # Add the 'src' directory to Python's module search path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 from tqdm import tqdm
-
 import random
 from multiprocessing import Process, Queue, set_start_method
 from collections import Counter
@@ -308,8 +307,8 @@ def producer(buffer, chunk_size):
 def consumer(queue, batches_per_file=100, n_files=10_000):
     feature_dump = []
     label_dump = []
-    data_idx = 0
-    for _ in tqdm(range(n_files)):
+    data_idx = 10000
+    for _ in tqdm(range(3*n_files)):
         try:
             features, labels = queue.get()  # Blocking call to fetch data from the queue
             feature_dump.append(features)
