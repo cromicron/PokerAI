@@ -1,19 +1,27 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+
 from PokerGame.NLHoldem import Game, Card, Player
-from value_functions.split_gru_value_function import GRUValueFunction
-from policies.split_gru_policy import SplitGruPolicy
-from lookup.HandComparatorLookup import strength_array, strength
+from pokerAI.value_functions.split_gru_value_function import GRUValueFunction
+from pokerAI.policies.split_gru_policy import SplitGruPolicy
+from pokerAI.lookup.HandComparatorLookup import strength_array, strength
+from pokerAI.algos.ppo import Agent, Episode, check_hand_evals
 import torch
 import numpy as np
-from algos.ppo import Agent, Episode, check_hand_evals
+from pathlib import Path
+
+
+
 from typing import List
 import pandas as pd
 import gc
 from tqdm import tqdm
-import os
 from copy import deepcopy
 import ray
 from time import time
 
+SCRIPT_DIR = Path(__file__).parent
 torch.set_flush_denormal(True)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 os.environ["RAY_memory_usage_threshold"] = ".98"
@@ -251,6 +259,10 @@ def play_matchday_remote(matchday: Matchday):
     return matchday.pairings
 
 
+SCRIPT_DIR = Path(__file__).parent.resolve()  # Get the actual script’s directory
+path_evolutions_pol = (SCRIPT_DIR / "../src/pokerAI/policies/saved_models/evolutions/").resolve()
+path_evolutions_val = (SCRIPT_DIR / "../src/pokerAI/value_functions/saved_models/evolutions/").resolve()
+
 class League:
     def __init__(
             self,
@@ -259,8 +271,8 @@ class League:
             games_till_evolution=100_000,
             games_per_match_evolution=10,
             n_evolutions=1,
-            path_evolutions_pol= "../policies/saved_models/evolutions/",
-            path_evolutions_val="../value_functions/saved_models/evolutions/",
+            path_evolutions_pol=path_evolutions_pol,
+            path_evolutions_val = path_evolutions_val,
             processes_per_match=1,
     ):
         assert len(players) % 2 == 0, "Provide an even number of teams"
@@ -400,118 +412,118 @@ class League:
         for player in self.players:
             player.value_optimizer, player.policy_optimizer = self.optimizers[player]
 
+if __name__ == "__main__":
+    hands_per_round = 80
+    num_agents = 2
+    processes_per_match = 4
+    players_per_hand = 2
+    stack = 50
+    exploration_temp = 1.5
+    entropy_coeff = 2
 
-num_agents = 2
-hands_per_round = 100
-processes_per_match = 4
-players_per_hand = 2
-stack = 20
-exploration_temp = 1.0
-entropy_coeff = 1
-
-path_policies = "../policies/saved_models/"
-path_value_functions = "../value_functions/saved_models/"
-load_for_model = [True for _ in range(num_agents)]
+    path_policies = (SCRIPT_DIR / "../src/pokerAI/policies/saved_models").resolve()
+    path_value_functions = (SCRIPT_DIR / "../src/pokerAI/value_functions/saved_models").resolve()
+    load_for_model = [True for _ in range(num_agents)]
 
 
-game = Game(n_players=2, stacks=[stack for _ in range(players_per_hand)])
-game.new_hand(first_hand=True)
+    game = Game(n_players=2, stacks=[stack for _ in range(players_per_hand)])
+    game.new_hand(first_hand=True)
 
-# Compute state vector size using a dummy state
+    # Compute state vector size using a dummy state
 
-hidden_size = 128
-input_size_recurrent = 42
-input_size_static = 30
-linear_layers = (256, 256)
-feature_dim = 259
-value_functions = [
-    GRUValueFunction(
+    hidden_size = 128
+    input_size_recurrent = 42
+    input_size_static = 30
+    linear_layers = (256, 256)
+    feature_dim = 259
+    value_functions = [
+        GRUValueFunction(
+                input_size_recurrent,
+                feature_dim + input_size_static,
+                hidden_size,
+                1,
+                linear_layers=(256, 128),
+            ) for _ in range(num_agents)
+    ]
+
+    policies = [
+        SplitGruPolicy(
             input_size_recurrent,
-            feature_dim + input_size_static,
+            feature_dim + input_size_static +2,
             hidden_size,
             1,
-            linear_layers=(256, 128),
-        ) for _ in range(num_agents)
-]
+            linear_layers,
+            value_function=v,
+        ) for v in value_functions
+    ]
 
-policies = [
-    SplitGruPolicy(
-        input_size_recurrent,
-        feature_dim + input_size_static +2,
-        hidden_size,
-        1,
-        linear_layers,
-        value_function=v,
-    ) for v in value_functions
-]
+    league = League([
+        LeaguePlayer(
+            Player(i, stack),
+            policy,
+            value_function,
+            True,
+            str(i),
+            path_policy_network=f"{path_policies}/policy_{i}.pt",
+            path_value_network=f"{path_value_functions}/model_{i}.pt",
+            path_policy_optimizer=f"{path_policies}/optimizer_{i}.pt",
+            path_value_optimizer=f"{path_value_functions}/optimizer_{i}.pt",
+            load=load,
+        ) for i, (policy, value_function, load) in enumerate(zip(policies, value_functions, load_for_model))
+    ], games_per_match=hands_per_round, n_evolutions=1)
+    train_ranges = True
 
-league = League([
-    LeaguePlayer(
-        Player(i, stack),
-        policy,
-        value_function,
-        True,
-        str(i),
-        path_policy_network=f"{path_policies}policy_{i}.pt",
-        path_value_network=f"{path_value_functions}model_{i}.pt",
-        path_policy_optimizer=f"{path_policies}optimizer_{i}.pt",
-        path_value_optimizer=f"{path_value_functions}optimizer_{i}.pt",
-        load=load,
-    ) for i, (policy, value_function, load) in enumerate(zip(policies, value_functions, load_for_model))
-], games_per_match=hands_per_round, n_evolutions=1)
-train_ranges = True
-
-while True:
-    for a_nr, agent in enumerate(league.players):
-        agent.reset()
-        gc.collect()
-        agent.policy.to("cpu")
-        agent.value_function.to("cpu")
-        check_hand_evals(agent, output_file=f"evaluations/hand_evaluations_{a_nr}.csv", new_game=game)
-    if agent.n_games >= league.n_evolutions*league.games_till_evolution:
-        print("Evolving Players")
-        league.evolution(False)
-
-    league.create_schedule(processes_per_match=processes_per_match)
-    now = time()
-    league.play_season(True)
-    print(f"finished playing in {time() - now}")
-    print(league.table)
-    remote=True
-    for agent in tqdm(league.players):
-        agent.generate_training_data(ranges=True)
-        agent.train_policy(epochs=1, batch_size=8192, entropy_coef=entropy_coeff, clip_epsilon=0.05, verbose=False, ranges=True)
-        agent.value_function.to(device)
-        with torch.no_grad():
-            state_input = agent.training_data["observations"].to(device)
-            value_predictions = agent.value_function(state_input, return_sequences=True)[0]
-            torch.cuda.empty_cache()
-            state_input = torch.cat([state_input, value_predictions], dim=-1)
-            probs = agent.policy(state_input, return_sequences=True)[0].category_probs
+    while True:
+        for a_nr, agent in enumerate(league.players):
+            agent.reset()
+            gc.collect()
             agent.policy.to("cpu")
+            agent.value_function.to("cpu")
+            check_hand_evals(agent, output_file=f"evaluations/hand_evaluations_{a_nr}.csv", new_game=game)
+        if agent.n_games >= league.n_evolutions*league.games_till_evolution:
+            print("Evolving Players")
+            league.evolution(False)
+
+        league.create_schedule(processes_per_match=processes_per_match)
+        now = time()
+        league.play_season(True)
+        print(f"finished playing in {time() - now}")
+        print(league.table)
+        remote=True
+        for agent in tqdm(league.players):
+            agent.generate_training_data(ranges=True)
+            agent.train_policy(epochs=1, batch_size=8192, entropy_coef=entropy_coeff, clip_epsilon=0.05, verbose=False, ranges=True)
+            agent.value_function.to(device)
+            with torch.no_grad():
+                state_input = agent.training_data["observations"].to(device)
+                value_predictions = agent.value_function(state_input, return_sequences=True)[0]
+                torch.cuda.empty_cache()
+                state_input = torch.cat([state_input, value_predictions], dim=-1)
+                probs = agent.policy(state_input, return_sequences=True)[0].category_probs
+                agent.policy.to("cpu")
+                torch.cuda.empty_cache()
+            action_types = agent.training_data["action_types"].to(device)
+            action_masks = agent.training_data["action_masks"].to(device)
+            if train_ranges:
+                weights = agent.training_data["ranges_tensor"].to(device)*1326
+            else:
+                weights = None
             torch.cuda.empty_cache()
-        action_types = agent.training_data["action_types"].to(device)
-        action_masks = agent.training_data["action_masks"].to(device)
-        if train_ranges:
-            weights = agent.training_data["ranges_tensor"].to(device)*1326
-        else:
-            weights = None
-        torch.cuda.empty_cache()
-        agent.value_function.train_on_data(
-            optimizer=agent.value_optimizer,
-            epochs=1,
-            batch_size=8192,
-            observations=agent.training_data["observations"],
-            rewards=agent.training_data["rewards"],
-            mask=agent.training_data["masks"],
-            actions=action_types,
-            action_masks=action_masks,
-            probs=probs,
-            verbose=False,
-            weights=weights
-        )
-        torch.cuda.empty_cache()
-        agent.value_function.to("cpu")
-        agent.value_function.eval()
-        agent.policy.eval()
-        agent.save_model()
+            agent.value_function.train_on_data(
+                optimizer=agent.value_optimizer,
+                epochs=1,
+                batch_size=8192,
+                observations=agent.training_data["observations"],
+                rewards=agent.training_data["rewards"],
+                mask=agent.training_data["masks"],
+                actions=action_types,
+                action_masks=action_masks,
+                probs=probs,
+                verbose=False,
+                weights=weights
+            )
+            torch.cuda.empty_cache()
+            agent.value_function.to("cpu")
+            agent.value_function.eval()
+            agent.policy.eval()
+            agent.save_model()

@@ -1,9 +1,9 @@
-from encoders.hand_encoder import PokerHandEmbedding
+from pokerAI.encoders.hand_encoder import PokerHandEmbedding
 import torch
 from PokerGame.NLHoldem import Card
 import numpy as np
 from itertools import combinations
-from lookup.HandComparatorLookup import strength_array, strength
+from pokerAI.lookup.HandComparatorLookup import strength_array, strength
 
 deck = [(rank, suit) for rank in range(2, 15) for suit in range(4)]
 card_to_int = {
@@ -95,7 +95,7 @@ for test in tests:
         river_tensor = None
 
     features, model_predictions = model(preflop_tensor, flop_tensor, turn_tensor, river_tensor)
-    predictions.append(torch.exp(model_predictions["log_probs_outcome_river"]))
+    predictions.append(torch.exp(model_predictions["log_probs_outcome_turn"]))
 
 
 # Print results

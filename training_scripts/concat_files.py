@@ -2,7 +2,8 @@ import os
 import numpy as np
 import pickle
 from tqdm import tqdm
-PATH_DATA = "/mnt/e/pokerAI/encoder_data/train"
+PATH_DATA = "/mnt/e/pokerAI/encoder_data/from_ionos"
+PATH_SAVE = "/mnt/e/pokerAI/encoder_data/train/turn_precise"
 
 files = sorted([f for f in os.listdir(PATH_DATA) if os.path.isfile(os.path.join(PATH_DATA, f))])
 n_data = len(files)//2
@@ -21,8 +22,8 @@ for i in tqdm(range(n_data)):
         features = np.vstack([features, features_to_add])
         labels = {key: np.concatenate([labels[key], labels_to_add[key]], axis=0) for key in labels.keys()}
         if i % 20 == 19:
-            np.save(f"{PATH_DATA}/large/features_{data_idx:04d}.npy", features)
-            with open(f"{PATH_DATA}/large/labels_{data_idx:04d}.pkl", "wb") as f:
+            np.save(f"{PATH_SAVE}/features_{data_idx:04d}.npy", features)
+            with open(f"{PATH_SAVE}/labels_{data_idx:04d}.pkl", "wb") as f:
                 pickle.dump(labels, f)
             data_idx += 1
             new_data = True

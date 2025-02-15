@@ -1,5 +1,5 @@
 from train_hand_encoder import calc_losses, load_checkpoint
-from encoders.hand_encoder import PokerHandEmbedding
+from pokerAI.encoders.hand_encoder import PokerHandEmbedding
 import os
 import pickle
 import numpy as np
@@ -17,7 +17,7 @@ embedding_dim = 4
 feature_dim = 256
 deep_layer_dims = (512, 2048, 2048, 2048)
 intermediary_dim = 16
-batch_size = 32000
+batch_size = 32768
 num_epochs = 100
 num_workers = 4
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -60,12 +60,17 @@ loss_weights = {task: 1.0 / max(initial_losses[task].item(), 1e-6) for task in i
 print(f"✅ Initial loss weights computed: {loss_weights}\n")
 
 # **STEP 3: Load Checkpoint & Define Scheduler**
-load_checkpoint(MODEL_SAVE_PATH, model, optimizer)
+load_checkpoint(MODEL_SAVE_PATH, model, optimizer, lr=1e-4)
 
+#model.freeze([
+#    "head_outcome_probs_river",
+#])
 model.freeze_except(["head_outcome_probs_river"])
 with torch.no_grad():
     _, eval_results = model(preflop_eval, flop_eval, turn_eval, river_eval)
-    eval_losses = calc_losses(eval_results, eval_labels)  # REVERT TO PREVIOUS WORKING STATE
+    eval_losses = calc_losses(eval_results, eval_labels)  # REVERTED BACK TO WORKING STATE
+    #best_val_loss = sum(
+    #    loss_weights[task] * eval_losses[task] for task in eval_losses).item()
     best_val_loss = eval_losses["outcome_river"]
     print(f"✅ Eval loss start computed: {best_val_loss}\n")
 
@@ -179,15 +184,17 @@ for epoch in range(num_epochs):
         with torch.no_grad():
             _, eval_results = model(preflop_eval, flop_eval, turn_eval, river_eval)
             eval_losses = calc_losses(eval_results, eval_labels)  # REVERTED BACK TO WORKING STATE
-            total_eval_loss = sum(loss_weights[task] * eval_losses[task] for task in eval_losses if task != "outcome_turn").item()
+            total_eval_loss = sum(loss_weights[task] * eval_losses[task] for task in eval_losses).item()
 
         print(f"📊 Eval total: {total_eval_loss:.8f}, PR: {eval_losses['outcome_river']:.8f}, TR: {eval_losses['type_river']:.8f}, PT: {eval_losses['outcome_turn']:.8f}")
 
         # ReduceLROnPlateau after each file
-        scheduler.step(eval_losses['outcome_river'])
+        scheduler.step(total_eval_loss)
 
-        if eval_losses['outcome_river'] < best_val_loss:
-            best_val_loss = eval_losses['outcome_river']
+        #if total_eval_loss < best_val_loss:
+        if eval_losses["outcome_river"] < best_val_loss:
+            #best_val_loss =total_eval_loss
+            best_val_loss = eval_losses["outcome_river"]
             torch.save({"model_state_dict": model.state_dict(), "optimizer_state_dict": optimizer.state_dict()},
                        BEST_MODEL_PATH)
             print("🏆 Best model saved!")
