@@ -5,13 +5,18 @@ from PySide2.QtWidgets import QDialog, QApplication, QMainWindow, QLabel, QLineE
 from PySide2.QtGui import QPixmap, QDoubleValidator
 from PySide2.QtCore import Qt, QTimer
 from PokerGame.NLHoldem import Game, value_dict, suit_dict
-from agents.gru_agent import Agent
-from policies.mixed_gru_policy import MixedGruPolicy
-from value_functions.gru_value_function import GRUValueFunction
-from encoders.state_encoder import encode_state
-from encoders.strength_encoder import encode_strength
-import numpy as np
+from pokerAI.agents.split_gru_agent import Agent
+from pokerAI.policies.split_gru_policy import SplitGruPolicy
+from pokerAI.value_functions.split_gru_value_function import GRUValueFunction
+from pathlib import Path
 import torch
+
+feature_dim = 259
+hidden_size = 128
+input_size_recurrent = 42
+input_size_static = 30
+linear_layers = (256, 256)
+SCRIPT_DIR = Path(__file__).parent.resolve()
 
 class GameSetupDialog(QDialog):
     def __init__(self, parent=None):
@@ -408,7 +413,7 @@ class PokerWindow(QMainWindow, Ui_MainWindow):
             return
 
         for agent in self.ai_agents.values():
-            state = agent.encode_state(game)
+            state = agent.encode_state(game.get_state(agent.player))
             agent.episodes[-1].add_observation(state)
             agent.add_to_sequence(state)
         current_player = self.game.acting_player
@@ -437,7 +442,8 @@ class PokerWindow(QMainWindow, Ui_MainWindow):
 
     def process_ai_turn(self, player):
         # Example AI logic
-        action, betsize, *_ = self.ai_agents[player].get_action(game=game)
+        state = self.game.get_state(player)
+        action, betsize, *_ = self.ai_agents[player].get_action(state)
         if action == 0:
             QTimer.singleShot(1000,self.fold)
         elif action == 1:
@@ -552,31 +558,28 @@ def init_game(game, mainWin):
 
     # seat players according to order in game-instance. Player_0 always sits in the first seat because hero
     index_hero = game.positions.index(game.players[0])
-    dummy_player = game.players[0]
-    dummy_state = encode_state(game, dummy_player)
-    dummy_cards = dummy_player.holecards
-    dummy_strength = encode_strength(dummy_cards)
-    state_vector_value =  np.hstack([dummy_state, dummy_strength])
-    state_vector_value = state_vector_value.shape[0]
+
     value_functions = [
         GRUValueFunction(
-            input_size=state_vector_value,
-            hidden_size=256,
-            num_gru_layers=1,
+            input_size_recurrent,
+            feature_dim + input_size_static,
+            hidden_size,
+            1,
             linear_layers=(256, 128),
         ) for _ in range(len(game.players))
     ]
     policies = [
-        MixedGruPolicy(
-            input_size=state_vector_value + 2,
-            hidden_size=256,
-            num_gru_layers=1,
-            linear_layers=(256, 128),
+        SplitGruPolicy(
+            input_size_recurrent,
+            feature_dim + input_size_static +2,
+            hidden_size,
+            1,
+            linear_layers,
             value_function=v,
         ) for v in value_functions
     ]
-    policy_paths = [f"../policies/saved_models/policy_6.pt" for _ in range(len(policies))]
-    value_paths = [f"../value_functions/saved_models/model_6.pt" for _ in range(len(policies))]
+    policy_paths = ["../policies/saved_models/policy_1.pt" for _ in range(len(policies))]
+    value_paths = [f"../value_functions/saved_models/model_1.pt" for _ in range(len(policies))]
     mainWin.ai_agents = {
         player: Agent(
             player,

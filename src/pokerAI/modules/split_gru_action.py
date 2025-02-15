@@ -1,5 +1,5 @@
-from modules.split_gru_module import SplitGRUModule
-from modules.mixed_distribution_head import MixedDistributionHead
+from pokerAI.modules.split_gru_module import SplitGRUModule
+from pokerAI.modules.mixed_distribution_head import MixedDistributionHead
 from torch import nn
 import matplotlib.pyplot as plt
 import torch

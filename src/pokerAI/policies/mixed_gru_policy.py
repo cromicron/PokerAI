@@ -1,4 +1,4 @@
-from modules.mixed_gru_module import MixedGRUModule
+from pokerAI.modules.mixed_gru_module import MixedGRUModule
 from torch import nn
 import torch
 import numpy as np

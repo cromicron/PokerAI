@@ -1,5 +1,5 @@
-from value_functions.gru_value_function import PokerDataset
-from modules.split_gru_module import SplitGRUModule
+from pokerAI.value_functions.gru_value_function import PokerDataset
+from pokerAI.modules.split_gru_module import SplitGRUModule
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset

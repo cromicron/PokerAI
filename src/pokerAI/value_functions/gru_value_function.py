@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from modules.gru_module import GRUModule
+from pokerAI.modules.gru_module import GRUModule
 from torch.utils.data import DataLoader, Dataset
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

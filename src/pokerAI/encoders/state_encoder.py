@@ -1,4 +1,4 @@
-from encoders.card_encoder import encode_holecards, encode_flop, encode_card
+from pokerAI.encoders.card_encoder import encode_holecards, encode_flop, encode_card
 from PokerGame.NLHoldem import Game, Player
 from PokerGame.HandComperator import strength
 from typing import List

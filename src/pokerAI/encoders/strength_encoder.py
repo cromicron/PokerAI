@@ -2,7 +2,7 @@ import torch
 
 from PokerGame.NLHoldem import Game, Player
 from PokerGame.HandComperator import strength as evaluate_strength
-from encoders.state_encoder import encode_state
+from pokerAI.encoders.state_encoder import encode_state
 from operator import attrgetter
 from itertools import combinations
 import numpy as np

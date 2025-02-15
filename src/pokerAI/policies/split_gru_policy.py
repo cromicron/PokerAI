@@ -1,6 +1,6 @@
-from modules.split_gru_action import SplitGRUActionModule
-from value_functions.split_gru_value_function import GRUValueFunction
-from encoders.embedding_hand_encoder import Encoder, feature_dim
+from pokerAI.modules.split_gru_action import SplitGRUActionModule
+from pokerAI.value_functions.split_gru_value_function import GRUValueFunction
+from pokerAI.encoders.embedding_hand_encoder import Encoder, feature_dim
 from torch import nn
 import torch
 import numpy as np
@@ -262,14 +262,16 @@ class SplitGruPolicy(torch.nn.Module):
 
         if betfrac is not None:
             betfrac_tensor = torch.full((1326,1), betfrac, dtype=torch.float32)
-            action_tensor = torch.full((1326,1), action, dtype=torch.float32)
-            probs = torch.exp(dist_range.log_prob(action_tensor, betfrac_tensor).squeeze())
-            cat_probs = probs[:, 0].numpy()
-            bet_density = probs[:, 1].numpy()
+            if play_range:
+                action_tensor = torch.full((1326,1), action, dtype=torch.float32)
+                probs = torch.exp(dist_range.log_prob(action_tensor, betfrac_tensor).squeeze())
+                cat_probs = probs[:, 0].numpy()
+                bet_density = probs[:, 1].numpy()
         else:
             cat_probs = dist_range.category_probs[..., action_type].squeeze().numpy()
             bet_density = None
-        self.bayesian_update(cat_probs, bet_density)
+        if update_range:
+            self.bayesian_update(cat_probs, bet_density)
         self.sequence_buffer = []
         self.sequence_buffer_range = []
 

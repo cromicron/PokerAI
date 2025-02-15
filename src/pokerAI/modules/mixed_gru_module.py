@@ -1,7 +1,7 @@
-from modules.gru_module import GRUModule
+from pokerAI.modules.gru_module import GRUModule
 from torch import nn
 import matplotlib.pyplot as plt
-from modules.mixed_distribution_head import MixedDistributionHead
+from pokerAI.modules.mixed_distribution_head import MixedDistributionHead
 import torch
 
 

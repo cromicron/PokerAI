@@ -17,7 +17,7 @@ class Encoder(PokerHandEmbedding):
     def __init__(self):
         super().__init__(embedding_dim, feature_dim, deep_layer_dims, intermediary_dim)
         checkpoint = torch.load(MODEL_SAVE_PATH, map_location=torch.device('cpu'))  # Load the checkpoint file
-        self.load_state_dict(checkpoint)  # Load model weights
+        self.load_state_dict(checkpoint["model_state_dict"])  # Load model weights
         self.to("cpu")
         self.eval()
 

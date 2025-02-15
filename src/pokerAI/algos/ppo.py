@@ -1,8 +1,8 @@
-from encoders.state_encoder import encode_state
-from encoders.strength_encoder import encode_strength
+from pokerAI.encoders.state_encoder import encode_state
+from pokerAI.encoders.strength_encoder import encode_strength
 from PokerGame.NLHoldem import Game, Card
-from value_functions.gru_value_function import GRUValueFunction
-from policies.mixed_gru_policy import MixedGruPolicy
+from pokerAI.value_functions.gru_value_function import GRUValueFunction
+from pokerAI.policies.mixed_gru_policy import MixedGruPolicy
 from itertools import combinations
 import csv
 import torch
@@ -143,6 +143,8 @@ class Agent:
             idx_stack_start=51,
             idx_stack_now=30,
             idx_bet=41,
+            path_policy_network=None,
+            path_value_network=None,
     ):
         self.player = player
         self.policy = policy
@@ -158,6 +160,13 @@ class Agent:
         self.idx_stack_now=idx_stack_now
         self.idx_bet=idx_bet
         self.blind=0
+        if path_policy_network is not None:
+            self.policy.load_state_dict(torch.load(path_policy_network, map_location="cpu", weights_only=True))
+            self.policy.to("cpu")  # Ensure policy is explicitly on CPU
+            self.policy.eval()
+        if path_value_network is not None:
+            self.value_function.load_state_dict(
+                torch.load(path_value_network, map_location="cpu", weights_only=True))
 
     def encode_state(self, state, range=False):
         return self.policy.encode_state(state, range)
@@ -291,7 +300,9 @@ class Agent:
                 surrogate1 = ratio * adv_batch
                 surrogate2 = torch.clamp(ratio, 1.0 - clip_epsilon, 1.0 + clip_epsilon) * adv_batch
                 policy_loss = -torch.min(surrogate1, surrogate2)
-                # weight loss for bet raise with probability of bet-raise
+                # two losses for action and bet-size. Betsize only relevant if action == 2
+                # set betsize loss to 0 for all non-bet-actions
+                policy_loss[..., 1][actions_batch!=2] = 0
                 raise_weights = log_probs[..., 0].exp().detach()
                 combined_loss = raise_weights*policy_loss[..., 1] + policy_loss[..., 0]
                 combined_loss =(combined_loss * valid_mask.float()).sum() / valid_mask.sum()
@@ -368,7 +379,7 @@ class PPOTrainingDataset(Dataset):
         )
 
 @torch.no_grad()
-def check_hand_evals(agent, output_file="hand_evaluations.csv", new_game=None):
+def check_hand_evals(agent, output_file="hand_evaluations.csv", new_game=None, plot_densities=False):
     """
     Sanity check for starting hands, including value function predictions,
     policy probabilities for action categories, and the most likely bet_frac.
@@ -439,11 +450,12 @@ def check_hand_evals(agent, output_file="hand_evaluations.csv", new_game=None):
     beta_weights = policy_distributions.beta_weights
 
     # Plot Beta densities for specific hands
-    if specific_indices:
-        specific_observations = stacked_observations[specific_indices]
-        agent.policy.module.plot_beta_density(specific_observations, hand_labels=specific_hands)
-    else:
-        print("No specific hands found for plotting.")
+    if plot_densities:
+        if specific_indices:
+            specific_observations = stacked_observations[specific_indices]
+            agent.policy.module.plot_beta_density(specific_observations, hand_labels=specific_hands)
+        else:
+            print("No specific hands found for plotting.")
 
     # Prepare CSV data
     csv_data = []

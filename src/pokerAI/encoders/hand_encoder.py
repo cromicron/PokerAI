@@ -92,6 +92,12 @@ class PokerHandEmbedding(nn.Module):
             nn.GELU(),
             nn.Linear(64, 3)
         )
+        self.head_outcome_probs_river_small = nn.Sequential(
+            nn.Linear(feature_dim, intermediary_dim),
+            nn.GELU(),
+            nn.Linear(intermediary_dim, 3)
+        )
+
         # modules to evaluate board cards only without hole
         self.head_strength_flop = nn.Sequential(
             nn.Linear(feature_dim, intermediary_dim),
@@ -277,6 +283,9 @@ class PokerHandEmbedding(nn.Module):
         """Freezes all parameters except those explicitly listed."""
         for name, param in self.named_parameters():
             param.requires_grad = any(name.startswith(p) for p in param_names_to_keep_trainable)
+    def freeze(self, param_names_to_freeze: list):
+        for name, param in self.named_parameters():
+            param.requires_grad = not any(name.startswith(p) for p in param_names_to_freeze)
 
     def forward(
             self,
