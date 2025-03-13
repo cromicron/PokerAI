@@ -7,6 +7,7 @@ class Episode:
         self.legal_actions = []
         self.reward = None
         self.ranges = []
+        self.action_probs = []
 
     def add_observation(self, observation):
         self.observations.append(observation)
@@ -20,6 +21,9 @@ class Episode:
 
     def add_range(self, hand_range):
         self.ranges.append(hand_range)
+
+    def add_action_prob(self, action_prob):
+        self.action_probs.append(action_prob)
 
 
 
@@ -57,7 +61,8 @@ class Agent:
         return self.policy.encode_state(state, range)
 
     def get_action(self, game, smallest_unit=1, temperature=1, play_range=False, update_range=False):
-        return self.policy.get_action(game, smallest_unit, temperature=temperature, play_range=play_range, update_range=update_range)
+        return self.policy.get_action(
+            game, smallest_unit, temperature=temperature, play_range=play_range, update_range=update_range)
 
 
     def add_to_sequence(self, state):

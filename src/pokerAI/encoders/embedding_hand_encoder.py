@@ -20,6 +20,7 @@ class Encoder(PokerHandEmbedding):
         self.load_state_dict(checkpoint["model_state_dict"])  # Load model weights
         self.to("cpu")
         self.eval()
+        self = torch.compile(self)
 
     @torch.no_grad()
     def encode(self, holecards, flop=None, turn=None, river=None):

@@ -25,7 +25,7 @@ SCRIPT_DIR = Path(__file__).parent
 torch.set_flush_denormal(True)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 os.environ["RAY_memory_usage_threshold"] = ".98"
-ray.init()
+#ray.init()
 
 
 class LeaguePlayer(Agent):
@@ -33,52 +33,127 @@ class LeaguePlayer(Agent):
             self,
             player,
             policy,
-            value_function,
-            encode_value=False,
-            name="default",
+            value_function=None,
+            encode_value=True,
             path_policy_network=None,
             path_value_network=None,
             path_policy_optimizer=None,
             path_value_optimizer=None,
             load=False,
+            optimizer=True,
+            exploration_temp=1,
     ):
-        super().__init__(player, policy, value_function, encode_value)
+        if value_function is None:
+            assert policy.value_function is not None, "you must provide a value function, if policy does not entail " \
+                                                      "one"
+            value_function = policy.value_function
+        super().__init__(player, policy, value_function, encode_value, create_optimizer=optimizer)
         self.n_games = 0
         self.score = 0
-        self.name = name
-
+        self.name = player.name
+        self.has_optimizer = optimizer
         self._paths = {
             "policy_network": path_policy_network,
             "value_network": path_value_network,
             "policy_optimizer": path_policy_optimizer,
             "value_optimizer": path_value_optimizer
         }
-
-
         if load:
             with torch.no_grad():
-                self.policy.load_state_dict(torch.load(self._paths["policy_network"], map_location="cpu", weights_only=True))
+                self.policy.load_state_dict(torch.load(self._paths["policy_network"], map_location="cpu", weights_only=True), strict=False)
                 self.policy.to("cpu")  # Ensure policy is explicitly on CPU
                 self.policy.eval()
 
                 self.value_function.load_state_dict(torch.load(self._paths["value_network"], map_location="cpu", weights_only=True))
-                self.policy_optimizer.load_state_dict(torch.load(self._paths["policy_optimizer"], map_location=device, weights_only=True))
-                self.value_optimizer.load_state_dict(torch.load(self._paths["value_optimizer"], map_location=device, weights_only=True))
-
-        for optimizer in [self.policy_optimizer, self.value_optimizer]:
-            for state in optimizer.state.values():
-                for key, value in state.items():
-                    if isinstance(value, torch.Tensor):
-                        state[key] = value.to(device)
+                if self.has_optimizer:
+                    self.policy_optimizer.load_state_dict(torch.load(self._paths["policy_optimizer"], map_location=device, weights_only=True))
+                    self.value_optimizer.load_state_dict(torch.load(self._paths["value_optimizer"], map_location=device, weights_only=True))
+        if self.has_optimizer:
+            for optimizer in [self.policy_optimizer, self.value_optimizer]:
+                for state in optimizer.state.values():
+                    for key, value in state.items():
+                        if isinstance(value, torch.Tensor):
+                            state[key] = value.to(device)
+        self.exploration_temp = exploration_temp
 
     def change_player(self, player):
         self.player = player
 
     def save_model(self):
         torch.save(self.policy.state_dict(), self._paths["policy_network"])
-        torch.save(self.policy_optimizer.state_dict(), self._paths["policy_optimizer"])
         torch.save(self.value_function.state_dict(), self._paths["value_network"])
-        torch.save(self.value_optimizer.state_dict(), self._paths["value_optimizer"])
+
+        if self.has_optimizer:
+            torch.save(self.policy_optimizer.state_dict(), self._paths["policy_optimizer"])
+            torch.save(self.value_optimizer.state_dict(), self._paths["value_optimizer"])
+
+    def train_value_function(self, train_ranges=True, epochs=1):
+        batch_size_generate = 256
+        with torch.no_grad():
+            state_input = self.training_data["observations"].to(device)
+
+            # Compute value predictions if not already available
+            if "qs" not in self.training_data.keys():
+                num_samples = state_input.shape[0]
+                value_predictions = []
+
+                # Process in batches
+                for i in range(0, num_samples, batch_size_generate):
+                    batch = state_input[i: i + batch_size_generate]
+                    value_pred_batch = self.value_function(batch, return_sequences=True)[0]
+                    value_predictions.append(value_pred_batch)
+
+                # Concatenate batched results
+                value_predictions = torch.cat(value_predictions, dim=0).to(device)
+                torch.cuda.empty_cache()
+            else:
+                value_predictions = self.training_data["qs"].to(device)
+
+            # Concatenate state input with value predictions
+            state_input = torch.cat([state_input, value_predictions], dim=-1)
+
+            self.policy.to(device)
+            probs_list = []
+
+            # Process in batches
+            num_samples = state_input.shape[0]
+            for i in range(0, num_samples, batch_size_generate):
+                batch = state_input[i: i + batch_size_generate]
+                probs_batch = self.policy(batch, return_sequences=True)[0].category_probs
+                probs_list.append(probs_batch)
+
+            # Concatenate probability results
+            probs = torch.cat(probs_list, dim=0)
+            self.policy.to("cpu")
+        action_types = self.training_data["action_types"].to(device)
+        action_masks = self.training_data["action_masks"].to(device)
+        if train_ranges:
+            weights = self.training_data["ranges_tensor"].to(device) * 1326
+        else:
+            weights = None
+        torch.cuda.empty_cache()
+        self.value_function.train_on_data(
+            optimizer=self.value_optimizer,
+            epochs=epochs,
+            batch_size=8192,
+            observations=self.training_data["observations"],
+            rewards=self.training_data["rewards"],
+            mask=self.training_data["masks"],
+            actions=action_types,
+            action_masks=action_masks,
+            probs=probs,
+            verbose=False,
+            weights=weights,
+            predictions=value_predictions,
+        )
+        torch.cuda.empty_cache()
+        self.value_function.to("cpu")
+        self.value_function.eval()
+        self.policy.eval()
+    def reset(self):
+        self.episodes = []
+        self.training_data = []
+        self.policy.reset()
 
 class Match:
     def __init__(self, player_1: LeaguePlayer, player_2: LeaguePlayer, max_games=400):
@@ -87,7 +162,9 @@ class Match:
         self.max_games = max_games
         self.finished = False
         self.result = None
-    def play_match(self, reward_type = "ranges_only"):
+    def play_match(self, reward_type = "ranges_only", store_episodes=None):
+        if store_episodes is None:
+            store_episodes = [player.name for player in self.players]
         starting_scores = {agent: agent.score for agent in self.players}
         assert self.finished == False, "This game is already finished"
         game = Game(stacks=[agent.player.starting_stack for agent in self.players])
@@ -104,7 +181,8 @@ class Match:
             for agent in self.players:
                 # check blinds
                 agent.blind = agent.player.bet
-                agent.episodes.append(Episode())
+                if agent.name in store_episodes:
+                    agent.episodes.append(Episode())
                 agent.policy.reset()
             street = 0
             while not game.finished:
@@ -132,11 +210,12 @@ class Match:
                     if features is None:
                         a = 1
                         print("here")
-                    agent.episodes[-1].add_observation(features)
-                    if reward_type == "ranges_only":
-                        agent.episodes[-1].add_range(agent.policy.range)
-                    if agent.player != game.acting_player:
-                        agent.episodes[-1].add_action(None, None)
+                    if agent.name in store_episodes:
+                        agent.episodes[-1].add_observation(features)
+                        if reward_type == "ranges_only":
+                            agent.episodes[-1].add_range(agent.policy.range)
+                        if agent.player != game.acting_player:
+                            agent.episodes[-1].add_action(None, None)
                     agent.add_to_sequence(features)
 
 
@@ -144,11 +223,13 @@ class Match:
                 street = game.street
                 current_player = game.acting_player
                 state = game.get_state(current_player)
-                action, betsize, action_type, betfrac, legal_actions = agents_dict[current_player].get_action(
-                    state, temperature=exploration_temp, play_range=reward_type=="ranges_only")
+                current_agent = agents_dict[current_player]
+                temp = current_agent.exploration_temp if current_agent.exploration_temp is not None else 1
+                action, betsize, action_type, betfrac, legal_actions = current_agent.get_action(
+                    state, temperature=temp, play_range=reward_type=="ranges_only")
                 action_add = (action_type, betfrac)
-                agents_dict[current_player].episodes[-1].add_action(action_add, legal_actions)
-
+                if current_agent.name in store_episodes:
+                    agents_dict[current_player].episodes[-1].add_action(action_add, legal_actions)
                 game.implement_action(current_player, action, betsize)
 
 
@@ -226,7 +307,8 @@ class Match:
 
 
                 reward = score + agent.blind
-                agent.episodes[-1].finish_episode(reward)
+                if agent.name in store_episodes:
+                    agent.episodes[-1].finish_episode(reward)
                 if reward_type == "ranges_only":
                     agent.score += (score * agent.policy.range).sum()
                 else:
@@ -415,15 +497,15 @@ class League:
 if __name__ == "__main__":
     hands_per_round = 80
     num_agents = 2
-    processes_per_match = 4
+    processes_per_match = 1
     players_per_hand = 2
     stack = 50
     exploration_temp = 1.5
-    entropy_coeff = 2
+    entropy_coeff = 1
 
     path_policies = (SCRIPT_DIR / "../src/pokerAI/policies/saved_models").resolve()
     path_value_functions = (SCRIPT_DIR / "../src/pokerAI/value_functions/saved_models").resolve()
-    load_for_model = [True for _ in range(num_agents)]
+    load_for_model = [True for i in range(num_agents)]
 
 
     game = Game(n_players=2, stacks=[stack for _ in range(players_per_hand)])
@@ -432,7 +514,7 @@ if __name__ == "__main__":
     # Compute state vector size using a dummy state
 
     hidden_size = 128
-    input_size_recurrent = 42
+    input_size_recurrent = 43
     input_size_static = 30
     linear_layers = (256, 256)
     feature_dim = 259
@@ -486,7 +568,7 @@ if __name__ == "__main__":
 
         league.create_schedule(processes_per_match=processes_per_match)
         now = time()
-        league.play_season(True)
+        league.play_season(False)
         print(f"finished playing in {time() - now}")
         print(league.table)
         remote=True

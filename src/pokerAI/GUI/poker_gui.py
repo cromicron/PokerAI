@@ -11,11 +11,11 @@ from pokerAI.value_functions.split_gru_value_function import GRUValueFunction
 from pathlib import Path
 import torch
 
-feature_dim = 259
 hidden_size = 128
-input_size_recurrent = 42
+input_size_recurrent = 43
 input_size_static = 30
 linear_layers = (256, 256)
+feature_dim = 259
 SCRIPT_DIR = Path(__file__).parent.resolve()
 
 class GameSetupDialog(QDialog):
@@ -565,7 +565,7 @@ def init_game(game, mainWin):
             feature_dim + input_size_static,
             hidden_size,
             1,
-            linear_layers=(256, 128),
+            linear_layers=(256, 256),
         ) for _ in range(len(game.players))
     ]
     policies = [
@@ -578,8 +578,8 @@ def init_game(game, mainWin):
             value_function=v,
         ) for v in value_functions
     ]
-    policy_paths = ["../policies/saved_models/policy_1.pt" for _ in range(len(policies))]
-    value_paths = [f"../value_functions/saved_models/model_1.pt" for _ in range(len(policies))]
+    policy_paths = ["../policies/saved_models/policy_learner.pt" for _ in range(len(policies))]
+    value_paths = [f"../value_functions/saved_models/model_learner.pt" for _ in range(len(policies))]
     mainWin.ai_agents = {
         player: Agent(
             player,

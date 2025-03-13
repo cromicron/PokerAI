@@ -14,7 +14,8 @@ class PokerDataset(Dataset):
             action_categories=None,
             action_masks=None,
             probs=None,
-            weights=None
+            weights=None,
+            predictions=None
     ):
         """
         Dataset for poker training data. Automatically computes next-step value targets.
@@ -30,9 +31,8 @@ class PokerDataset(Dataset):
         if weights is not None:
             self.weights = weights.to(device)
         # Compute targets
-        with torch.no_grad():  # No gradients needed during dataset creation
-            predictions, _ = value_function(self.observations, return_sequences=True)  # (batch_size, max_steps, 1)
-            predictions = predictions.squeeze(-1)  # Remove last dim, shape now: (batch_size, max_steps)
+  # (batch_size, max_steps, 1)
+ # Remove last dim, shape now: (batch_size, max_steps)
         assert value_function.output_dim in (1,2), "value function output must be 1 for value function and 2 for q"
         if value_function.output_dim == 1:
             self.targets = torch.roll(predictions, shifts=-1, dims=1)  # Shift targets for next-step prediction

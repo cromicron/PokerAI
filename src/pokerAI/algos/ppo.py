@@ -14,11 +14,20 @@ import copy
 import gc
 import time
 import ray
-
+from pokerAI.modules.mixed_distribution_head import stop_execution
 
 
 torch.set_flush_denormal(True)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def check_tensor(name):
+    def hook(grad):
+        if torch.isnan(grad).any() or torch.isinf(grad).any():
+            print(f"NAN Gradient issue in {name}")
+        if abs(grad).any() > 10:
+            print(f"Large Gradient issue in {name}")
+        print(f"max grad {torch.max(grad)}")
+    return hook
 class Episode:
     def __init__(self):
         self.observations = []
@@ -124,8 +133,16 @@ def create_training_data(episodes, single_raise=True, value_function=None, range
     if value_function:
         value_function.to(device)
         with torch.no_grad():
-            qs = value_function(observations.to(device), return_sequences=True)[0].to("cpu")
+            n_data = observations.size(0)
+            batch_size_value = n_data//10
+            qs_list = []
+            for k in range(0, n_data, batch_size_value):
+                observations_batch = observations[k: k+batch_size_value].to(device)
+                qs_list.append(value_function(observations_batch, return_sequences=True)[0])
+            qs = torch.vstack(qs_list).to("cpu")
             torch.cuda.empty_cache()
+            del(qs_list)
+            gc.collect()
     else:
         qs = None
     data_vars = ["observations", "action_types", "betfracs", "masks", "action_masks", "rewards", "legal_actions_mask", "qs"]
@@ -139,26 +156,32 @@ class Agent:
             player,
             policy,
             value_function,
-            encode_value=False,
-            idx_stack_start=51,
+            encode_value=True,
+            idx_stack_start=62,
             idx_stack_now=30,
             idx_bet=41,
             path_policy_network=None,
             path_value_network=None,
+            idx_pot=42,
+            create_optimizer=True,
     ):
         self.player = player
         self.policy = policy
         self.episodes = []
         self.training_data = None
         self.value_function = value_function
-        self.policy_optimizer = torch.optim.Adam(self.policy.parameters(), lr=1e-4)
-        self.value_optimizer = torch.optim.Adam(self.value_function.parameters(), lr=1e-4)
+        if create_optimizer:
+            self.policy_optimizer = torch.optim.AdamW(self.policy.parameters(), lr=1e-4)
+            self.value_optimizer = torch.optim.AdamW(self.value_function.parameters(), lr=1e-4)
+        else:
+            self.policy_optimizer, self.value_optimizer = None, None
         self.encode_value = encode_value
         if self.encode_value:
             self.policy.value_function = value_function
         self.idx_stack_start=idx_stack_start
         self.idx_stack_now=idx_stack_now
         self.idx_bet=idx_bet
+        self.idx_pot = idx_pot
         self.blind=0
         if path_policy_network is not None:
             self.policy.load_state_dict(torch.load(path_policy_network, map_location="cpu", weights_only=True))
@@ -196,12 +219,66 @@ class Agent:
         self.player.stack = self.player.starting_stack
         self.blind=0
         self.training_data = None
-    def train_policy(self, epochs=4, clip_epsilon=0.2, entropy_coef=0.01, batch_size=64, verbose=True, ranges=False):
+
+    @staticmethod
+    def compute_action_weights(ranges_tensor: torch.Tensor,
+                               old_log_probs: torch.Tensor,
+                               action_types: torch.Tensor) -> torch.Tensor:
+        """
+        Returns normalized posterior weights for each hand after observing the action and (if action=2) betsize.
+
+        Args:
+            ranges_tensor: shape [n * 1326, timesteps], prior probability of holding each hand.
+            old_log_probs: shape [n * 1326, timesteps, 2],
+                           log_probs[..., 0] = log-prob of chosen action,
+                           log_probs[..., 1] = log-prob of betsize (if action = 2).
+            action_types: shape [n * 1326, timesteps], each in {0,1,2} — already correctly aligned.
+
+        Returns:
+            weights: shape [n * 1326, timesteps] with normalized posterior weights.
+        """
+        n_hands = 1326
+
+        # Get log-prob of the chosen action for each hand
+        log_action_probs = old_log_probs[..., 0]
+
+        # Get log-prob of the betsize for each hand (only used if action == 2)
+        log_betsize_probs = old_log_probs[..., 1]
+
+        # Add the betsize log-prob only if action = 2
+        log_total_probs = log_action_probs.clone()
+        mask_bet = (action_types == 2)
+        log_total_probs[mask_bet] += log_betsize_probs[mask_bet]
+
+        # Compute unnormalized weights
+        weights = ranges_tensor * torch.exp(log_total_probs)
+
+        # Normalize over 1326 hands for each time step
+        weights = weights.view(-1, n_hands, weights.shape[-1])
+        weights /= weights.sum(dim=1, keepdim=True)
+
+        # Flatten back to original shape [n * 1326, timesteps]
+        weights = weights.view(-1, weights.shape[-1])*1326
+
+        return weights
+
+    def train_policy(
+            self,
+            epochs=4,
+            clip_epsilon_cat=0.2,
+            clip_epsilon_cont=0.2,
+            entropy_coef_cat=0.01,
+            entropy_coef_size=0.01,
+            batch_size=64,
+            verbose=True,
+            ranges=False,
+    ):
         """
         Trains the policy using PPO, with `old_log_probs` directly included in the DataLoader batches.
         Includes logging for verbosity.
         """
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        clip_epsilon = torch.tensor([clip_epsilon_cat, clip_epsilon_cont], device=device, dtype=torch.float32).unsqueeze(0)
         self.policy.to(device)
         self.policy.eval()
         observations = self.training_data["observations"].to(device)
@@ -209,7 +286,16 @@ class Agent:
             if self.encode_value:
                 qs = self.training_data["qs"].to(device)
                 observations = torch.cat([observations, qs], dim=-1)
-                probs = self.policy(observations, return_sequences=True)[0].category_probs
+                n_data = observations.size(0)
+                batch_size_data = n_data // 10
+                probs_list = []
+                for k in range(0, n_data, batch_size_data):
+                    observations_batch = observations[k: k + batch_size_data].to(device)
+                    probs_list.append(self.policy(observations_batch, return_sequences=True)[0].category_probs)
+                probs = torch.vstack(probs_list)
+                torch.cuda.empty_cache()
+                del (probs_list)
+                gc.collect()
                 torch.cuda.empty_cache()
                 blind = observations[:, 0, self.idx_bet]
                 starting_stack = observations[..., self.idx_stack_start]
@@ -240,8 +326,6 @@ class Agent:
                         returns[i: i+1326, t] = predicted_values[i: i+1326, t + 1] * masks[i: i+1326, t + 1]
                     advantages[i: i+1326, :, 0] = returns[i: i+1326] - predicted_values[i: i+1326]
                     advantages[i: i+1326, :, 1] = returns[i: i+1326] - qs[i: i+1326, :, 2]
-                # weigh advantages by hand_prob
-                advantages = ranges_tensor.unsqueeze(-1)*advantages*1326
             else:
                 for i in range(rewards.size(0)):
                     last_valid_idx = masks[i].nonzero()[-1].item()
@@ -250,17 +334,86 @@ class Agent:
                         returns[i, t] = predicted_values[i, t + 1] * masks[i, t + 1]
                     advantages[i, :, 0] = returns[i] - predicted_values[i]
                     advantages[i, :, 1] = returns[i] - qs[i, :, 2]
-        # Normalize advantages
-            mean = advantages.mean(dim=(0, 1), keepdim=True)  # Compute mean along the first two dimensions
-            std = advantages.std(dim=(0, 1), keepdim=True)  # Compute std along the first two dimensions
-            advantages = (advantages - mean) / (std + 1e-8)
+
 
         old_policy_module = self.policy.module if hasattr(self.policy, "module") else self.policy
         old_policy = copy.deepcopy(old_policy_module)
+
+        # Precompute old log-probs
+        n_data = observations.size(0)
+        batch_size_data = n_data // 10
+        old_log_probs_list = []
+        old_log_probs_fold_list = []
+        with torch.no_grad():
+            for k in range(0, n_data, batch_size_data):
+                observations_batch = observations[k: k + batch_size_data].to(device)
+                old_distribution, _ = old_policy(
+                    observations_batch, return_sequences=True, action_mask=legal_actions_mask[k: k + batch_size_data])
+                action_types_batch = action_types[k: k + batch_size_data]
+                betfrac_batch = betfracs[k: k + batch_size_data]
+                old_log_probs_batch = old_distribution.log_prob(action_types_batch, value=betfrac_batch)
+                old_log_probs_fold_batch = old_distribution.log_prob(
+                    torch.zeros_like(action_types_batch), value=torch.zeros_like(betfrac_batch))[..., 0]
+                old_log_probs_list.append(old_log_probs_batch)
+                old_log_probs_fold_list.append(old_log_probs_fold_batch)
+
+        old_log_probs = torch.vstack(old_log_probs_list)
+        old_log_probs_fold = torch.vstack(old_log_probs_fold_list)
+
+        advantages_fold = q_fold.squeeze() - predicted_values
+
         old_policy.eval()
-        dataset = PPOTrainingDataset(
-            observations, action_types, betfracs, rewards, masks, action_masks, advantages, returns, old_policy, legal_actions_mask
+
+        # each sample must be weighted, because it isn't equally likely to be part of the dataset if ranges
+        with torch.no_grad():
+            weight_sample = self.compute_action_weights(ranges_tensor, old_log_probs, action_types)
+        weight_sample[~action_masks] = 0
+        p_fold_hand = probs[..., 0]
+        weight_fold_sample = ranges_tensor * p_fold_hand *1326
+        weight_sample = torch.where(action_types==0, 0, weight_sample)
+        # to make overall magnitude identical mutliply original weights with 1- p_fold
+        weight_sample *= 1- p_fold_hand
+
+
+        # normalize advantages
+        # 1 categorical advantages
+        weights_all = torch.vstack([weight_sample, weight_fold_sample])
+        advantages_cat = torch.vstack([advantages[...,0], advantages_fold])
+        weighted_mean_cat = (advantages_cat * weights_all).sum()/ weights_all.sum()
+        weighted_var_cat = ((advantages_cat - weighted_mean_cat) ** 2 * weights_all).sum() / weights_all.sum()
+        weighted_std_cat = torch.sqrt(weighted_var_cat + 1e-8)
+        advantages_cat = (advantages_cat - weighted_mean_cat)/weighted_std_cat
+        advantages_fold = advantages_cat[advantages_cat.size(0)//2:]
+        # 2 continuous advantages
+        weights_raise = torch.where(action_types==2, weight_sample, 0.0)
+        weighted_mean_cont = (advantages[..., 1] * weights_raise).sum()/ weights_raise.sum()
+        weighted_var_cont = ((advantages[..., 1] - weighted_mean_cont) ** 2 * weights_raise).sum() / weights_raise.sum()
+        weighted_std_cont = torch.sqrt(weighted_var_cont + 1e-8)
+        advantages_cont = torch.where(
+            action_types==2,
+            (advantages[..., 1] - weighted_mean_cont)/weighted_std_cont,
+            0.0
         )
+        advantages = torch.stack([advantages_cat[:advantages_cat.size(0)//2], advantages_cont], dim=-1)
+
+
+        dataset = PPOTrainingDataset(
+            observations=observations,
+            action_types=action_types,
+            betfracs=betfracs,
+            rewards=rewards,
+            masks=masks,
+            action_masks=action_masks,
+            advantages=advantages,
+            returns=returns,
+            old_log_probs=old_log_probs,
+            old_log_probs_fold=old_log_probs_fold,
+            legal_actions_mask=legal_actions_mask,
+            advantages_fold=advantages_fold,
+            weights=weight_sample,
+            weights_fold=weight_fold_sample,
+        )
+
         torch.cuda.empty_cache()
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         self.policy.train()
@@ -280,6 +433,10 @@ class Agent:
                     adv_batch,
                     returns_batch,
                     old_log_probs_batch,
+                    adv_fold_batch,
+                    old_log_probs_fold_batch,
+                    weights_batch,
+                    weights_fold_batch,
             ) in dataloader:
                 num_batches += 1
 
@@ -288,51 +445,92 @@ class Agent:
 
                 # Forward pass through the current policy
                 distribution, _ = self.policy(obs_batch, return_sequences=True, legal_actions_mask=legal_actions_batch)
+
                 log_probs = distribution.log_prob(actions_batch, value=betfracs_batch)
-                entropy = distribution.entropy()
+                log_probs_fold = distribution.log_prob(
+                    torch.zeros_like(actions_batch), value=torch.zeros_like(betfracs_batch))[...,0]
+
+                check_tensor(log_probs)
+                check_tensor(log_probs_fold)
 
                 # Apply masks to log-probs and advantages
-                log_probs = log_probs * valid_mask.unsqueeze(-1).float()
-                adv_batch = adv_batch * valid_mask.unsqueeze(-1).float()
-
+                log_probs = log_probs[valid_mask]
+                adv_batch = adv_batch[valid_mask]
+                log_probs_fold = log_probs_fold[valid_mask]
+                adv_fold_batch = adv_fold_batch[valid_mask]
                 # Compute PPO loss
-                ratio = torch.exp(log_probs - old_log_probs_batch)
+                ratio = torch.exp(log_probs - old_log_probs_batch[valid_mask])
+                ratio_fold = torch.exp(log_probs_fold - old_log_probs_fold_batch[valid_mask])
                 surrogate1 = ratio * adv_batch
                 surrogate2 = torch.clamp(ratio, 1.0 - clip_epsilon, 1.0 + clip_epsilon) * adv_batch
+                surrogate1_fold = ratio_fold * adv_fold_batch
+                surrogate2_fold = torch.clamp(ratio_fold, 1.0 - clip_epsilon[:, 0], 1.0 + clip_epsilon[:, 0]) * adv_fold_batch
+
                 policy_loss = -torch.min(surrogate1, surrogate2)
+                policy_loss_fold = -torch.min(surrogate1_fold, surrogate2_fold)
                 # two losses for action and bet-size. Betsize only relevant if action == 2
                 # set betsize loss to 0 for all non-bet-actions
-                policy_loss[..., 1][actions_batch!=2] = 0
+                policy_loss[..., 1] = torch.where(
+                    actions_batch[valid_mask] != 2,
+                    torch.zeros_like(policy_loss[..., 1]),
+                    policy_loss[..., 1]
+                )
                 raise_weights = log_probs[..., 0].exp().detach()
-                combined_loss = raise_weights*policy_loss[..., 1] + policy_loss[..., 0]
-                combined_loss =(combined_loss * valid_mask.float()).sum() / valid_mask.sum()
+                combined_loss = policy_loss[..., 0] + raise_weights*policy_loss[..., 1]
 
+                # if we train with ranges, we have to weigh the samples
+                action_loss = combined_loss*weights_batch[valid_mask]
+                fold_loss = policy_loss_fold*weights_fold_batch[valid_mask]
+                folds_mask = actions_batch[valid_mask] != 2
+                action_loss = action_loss.sum() / (valid_mask.sum()-folds_mask.sum())
+                fold_loss = fold_loss.sum()/(valid_mask.sum())
+                reward_loss = action_loss + fold_loss
                 # Compute entropy reward
 
-                entropy = entropy * valid_mask.float()
-                entropy_loss = -entropy.mean() * entropy_coef
+                entropy = distribution.entropy()
+                entropy_cat = entropy[..., 0]*entropy_coef_cat* valid_mask.float()
+                entropy_size = entropy[..., 1]*entropy_coef_size* valid_mask.float()
+                entropy_loss = -((entropy_cat + entropy_size)*torch.where(
+                    actions_batch == 0, weights_fold_batch, weights_batch # weights_batch is 0 for folds
+                )).sum()/(valid_mask.sum())
 
                 # Total loss (policy loss + entropy reward)
-                total_loss = combined_loss + entropy_loss
+                total_loss = reward_loss + entropy_loss
 
                 # Update policy network
                 self.policy_optimizer.zero_grad()
                 total_loss.backward()
+                if stop_execution.is_set():
+                    print("Gradient too large — stopping training!")
+                torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=2.0)
+
                 self.policy_optimizer.step()
 
-                # Track losses for logging
-                epoch_policy_loss += combined_loss.item()
-                epoch_entropy_loss += entropy_loss.item()
 
-            # Log epoch stats
-            avg_policy_loss = epoch_policy_loss / num_batches
-            avg_entropy_loss = epoch_entropy_loss / num_batches
         self.policy.eval()
+        self.policy.to("cpu")
+        self.value_function.to("cpu")
 
 
 
 class PPOTrainingDataset(Dataset):
-    def __init__(self, observations, action_types, betfracs, rewards, masks, action_masks, advantages, returns, old_policy, legal_actions_mask):
+    def __init__(
+            self,
+            observations,
+            action_types,
+            betfracs,
+            rewards,
+            masks,
+            action_masks,
+            advantages,
+            returns,
+            old_log_probs,
+            old_log_probs_fold,
+            legal_actions_mask,
+            advantages_fold,
+            weights,
+            weights_fold,
+    ):
         """
         Dataset for PPO training data, including precomputed old log-probs.
 
@@ -356,11 +554,12 @@ class PPOTrainingDataset(Dataset):
         self.advantages = advantages
         self.returns = returns
         self.legal_actions_mask = legal_actions_mask
+        self.old_log_probs = old_log_probs
+        self.old_log_probs_fold = old_log_probs_fold
+        self.advantages_fold = advantages_fold
+        self.weights = weights
+        self.weights_fold = weights_fold
 
-        # Precompute old log-probs
-        with torch.no_grad():
-            old_distribution, _ = old_policy(observations, return_sequences=True, action_mask=legal_actions_mask)
-            self.old_log_probs = old_distribution.log_prob(action_types, value=betfracs)
 
     def __len__(self):
         return self.observations.size(0)
@@ -376,6 +575,10 @@ class PPOTrainingDataset(Dataset):
             self.advantages[idx],
             self.returns[idx],
             self.old_log_probs[idx],  # Include old log-probs in the dataset
+            self.advantages_fold[idx],
+            self.old_log_probs_fold[idx],
+            self.weights[idx],
+            self.weights_fold[idx]
         )
 
 @torch.no_grad()
@@ -516,6 +719,7 @@ def check_hand_evals(agent, output_file="hand_evaluations.csv", new_game=None, p
         writer = csv.writer(file)
         writer.writerow(columns)
         writer.writerows(csv_data)
+
 
 
 if __name__ == "__main__":

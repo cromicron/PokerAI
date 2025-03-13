@@ -6,6 +6,11 @@ import torch
 import numpy as np
 from itertools import combinations
 from PokerGame.NLHoldem import Game, int_to_card
+import numpy as np
+import warnings
+
+# Convert all warnings to errors
+warnings.filterwarnings("error", category=RuntimeWarning, message="invalid value encountered in multiply")
 
 
 
@@ -29,23 +34,42 @@ class SplitGruPolicy(torch.nn.Module):
             num_gru_layers,
             linear_layers,
             num_peaks=3,
-            activation=nn.LeakyReLU,
+            activation=nn.GELU,
             value_function=None,
+            idx_stack_start=62,
+            idx_stack_now=30,
+            idx_bet=41,
     ):
         super().__init__()
         self.module = SplitGRUActionModule(
-            input_size_recurrent,
-            input_size_regular,
-            hidden_size,
-            num_gru_layers,
-            linear_layers,
-            num_peaks,
-            activation,
+
+            input_size_recurrent=input_size_recurrent,
+            input_size_regular=input_size_regular,
+            hidden_size=hidden_size,
+            num_gru_layers=num_gru_layers,
+            linear_layers=linear_layers,
+            num_peaks=3,
+            activation=nn.GELU,
         )
+
         self.hidden = None
         self.sequence_buffer = None
         self.sequence_buffer_range = None
-        self.value_function = value_function
+        if value_function is not None:
+            self.value_function = value_function
+        else:
+            self.value_function = GRUValueFunction(
+                input_size_recurrent,
+                input_size_regular - 2,
+                hidden_size,
+                num_gru_layers,
+                linear_layers,
+                activation,
+                output_dim=2,
+                idx_stack_start=idx_stack_start,
+                idx_stack_now=idx_stack_now,
+                idx_bet=idx_bet,
+            )
 
         # Generate all possible hole card combinations
         # Initialize probabilities
@@ -90,6 +114,7 @@ class SplitGruPolicy(torch.nn.Module):
                 state["stack"],
                 bets,
                 state["bet"],
+                state["pot"],
             ]), dtype=torch.float32
         )
 
@@ -159,10 +184,16 @@ class SplitGruPolicy(torch.nn.Module):
         # Compute the unnormalized posterior probabilities
         if betfrac_density is None:
             betfrac_density = 1
-        unnormalized_posterior = self.range * action_probs * betfrac_density
+        try:
+            unnormalized_posterior = self.range * action_probs * np.clip(betfrac_density, None, 50)
+
 
         # Normalize the posterior probabilities
-        self.range = unnormalized_posterior / np.sum(unnormalized_posterior)
+            self.range = unnormalized_posterior / np.sum(unnormalized_posterior)
+        except:
+            print("something crazy is happening")
+            l = "lalalala"
+            print("insane")
 
 
     def update_feature_array(self, flop, turn, river):
@@ -208,7 +239,14 @@ class SplitGruPolicy(torch.nn.Module):
         return self.module.forward(x, hidden_state, return_sequences, legal_actions_mask)
 
     @torch.no_grad()
-    def get_action(self, state, smallest_unit=1, temperature=1, update_range=True, play_range=False):
+    def get_action(
+            self,
+            state,
+            smallest_unit=1,
+            temperature=1,
+            update_range=True,
+            play_range=False,
+    ):
         # Retrieve specific arguments like `game` from kwargs
         sequence = self.create_sequence(play_range)
         legal_actions = list(state["legal_actions"])
@@ -229,7 +267,13 @@ class SplitGruPolicy(torch.nn.Module):
         max_bet = state["bet"] + state["stack"]
 
         # sample hand from range
-        action_type, betfrac = dist.sample(temperature=temperature)
+        try:
+            action_type, betfrac = dist.sample(temperature=temperature)
+        except:
+            k = 1
+            print(k)
+            dist, h_act = self(sequence, h, legal_actions_mask=valid_action_mask)
+            action_type, betfrac = dist.sample(temperature=temperature)
         if play_range:
             hand_ind = np.random.choice(1326, p=self.range)
             action_type = action_type[hand_ind].item()
@@ -246,13 +290,18 @@ class SplitGruPolicy(torch.nn.Module):
 
 
         if action_type == 2:
+            stack = state["stacks"][state["position"]]
+            spr = stack / state["pot"]
+            # make betsize depend on spr
+            betfrac_spr = betfrac ** (spr**0.5)
             # create 5% mass for minbet and allin
-            if betfrac < 0.05:
+
+            if betfrac_spr < 0.05:
                 betfrac_transformed = 0
-            elif betfrac > 0.95:
+            elif betfrac_spr > 0.95:
                 betfrac_transformed = 1
             else:
-                betfrac_transformed = (betfrac - 0.05)/0.9
+                betfrac_transformed = (betfrac_spr - 0.05)/0.9
             betsize = (max_bet - min_bet) * betfrac_transformed + min_bet
             betsize = round(betsize / smallest_unit) * smallest_unit
             betsize = min(max_bet, betsize)
@@ -264,7 +313,8 @@ class SplitGruPolicy(torch.nn.Module):
             betfrac_tensor = torch.full((1326,1), betfrac, dtype=torch.float32)
             if play_range:
                 action_tensor = torch.full((1326,1), action, dtype=torch.float32)
-                probs = torch.exp(dist_range.log_prob(action_tensor, betfrac_tensor).squeeze())
+                probs = torch.exp(
+                    dist_range.log_prob(action_tensor, betfrac_tensor.to(torch.double)).squeeze()).to(torch.float)
                 cat_probs = probs[:, 0].numpy()
                 bet_density = probs[:, 1].numpy()
         else:

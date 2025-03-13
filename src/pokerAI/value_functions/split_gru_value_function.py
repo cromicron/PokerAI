@@ -15,7 +15,7 @@ class GRUValueFunction(SplitGRUModule):
             linear_layers,
             activation=nn.GELU,
             output_dim=2,
-            idx_stack_start=61,
+            idx_stack_start=62,
             idx_stack_now=30,
             idx_bet=41,
     ):
@@ -56,6 +56,7 @@ class GRUValueFunction(SplitGRUModule):
             action_masks=None,
             verbose=True,
             weights=None,
+            predictions=None,
     ):
         """
         Trains the value function using predicted values of the next step as targets.
@@ -78,6 +79,7 @@ class GRUValueFunction(SplitGRUModule):
             action_masks=action_masks,
             probs=probs,
             weights=weights,
+            predictions=predictions,
         )
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
@@ -117,3 +119,6 @@ class GRUValueFunction(SplitGRUModule):
         torch.cuda.empty_cache()
         self.to("cpu")
         self.eval()
+
+
+

@@ -151,6 +151,7 @@ class Game:
             "starting_stack": player.starting_stack,
             "starting_stacks": starting_stacks,
             "in_play": in_play,
+            "pot": self.pot,
             "stack": player.stack,
             "stacks": stacks,
             "street": self.street,
